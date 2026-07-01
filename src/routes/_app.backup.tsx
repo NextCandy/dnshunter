@@ -26,6 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Download, Upload, GitCompare, RotateCcw, ListChecks, Play } from "lucide-react";
 
+type RestoreStrategy = "add-missing" | "overwrite" | "replace-all";
+
 export const Route = createFileRoute("/_app/backup")({
   head: () => ({ meta: [{ title: "备份与恢复 · dshunter" }] }),
   component: BackupPage,
@@ -36,16 +38,18 @@ function BackupPage() {
   return (
     <div className="max-w-6xl">
       <h1 className="text-2xl font-bold mb-1">备份 · 恢复 · 差异</h1>
-      <p className="text-sm text-muted-foreground mb-6">
+      <div className="text-sm text-muted-foreground mb-6">
         当前选中 <Badge variant="secondary">{domains.length}</Badge> 个域名（在
         <Link to="/domains" className="text-primary underline mx-1">
           域名列表
         </Link>
         修改）。
-      </p>
+      </div>
 
       {domains.length === 0 ? (
-        <Card className="p-6 text-center text-muted-foreground">请先到域名列表选中要处理的域名。</Card>
+        <Card className="p-6 text-center text-muted-foreground">
+          请先到域名列表选中要处理的域名。
+        </Card>
       ) : (
         <Tabs defaultValue="export">
           <TabsList>
@@ -87,9 +91,7 @@ function ExportTab({ domains }: { domains: string[] }) {
           "application/json",
         );
       } else {
-        const flat = r.zones.flatMap((z) =>
-          z.records.map((rec) => ({ ...rec, domain: z.domain })),
-        );
+        const flat = r.zones.flatMap((z) => z.records.map((rec) => ({ ...rec, domain: z.domain })));
         downloadBlob(`dshunter-backup-${stamp}.csv`, toCsv(flat), "text/csv");
       }
       return r;
@@ -98,12 +100,13 @@ function ExportTab({ domains }: { domains: string[] }) {
       const total = r.zones.reduce((s, z) => s + z.records.length, 0);
       toast.success(`导出完成：${r.zones.length} 个 Zone / ${total} 条记录`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "导出失败"),
   });
   return (
     <Card className="p-4 space-y-3">
       <p className="text-sm">
-        将实时从 Cloudflare 读取所有 DNS 记录并下载到本地，包含 type/name/content/ttl/proxied/priority。
+        将实时从 Cloudflare 读取所有 DNS 记录并下载到本地，包含
+        type/name/content/ttl/proxied/priority。
       </p>
       <div className="flex gap-2">
         <Button onClick={() => exec.mutate("json")} disabled={exec.isPending}>
@@ -117,11 +120,7 @@ function ExportTab({ domains }: { domains: string[] }) {
   );
 }
 
-function BackupFileInput({
-  onLoad,
-}: {
-  onLoad: (zones: BackupZone[]) => void;
-}) {
+function BackupFileInput({ onLoad }: { onLoad: (zones: BackupZone[]) => void }) {
   return (
     <label className="inline-flex items-center gap-2 border border-input rounded-md px-3 py-2 text-sm cursor-pointer bg-background hover:bg-accent">
       <Upload className="size-4" />
@@ -139,8 +138,8 @@ function BackupFileInput({
             if (!Array.isArray(parsed)) throw new Error("文件格式错误：需要 BackupZone[] 数组");
             onLoad(parsed as BackupZone[]);
             toast.success(`已载入 ${parsed.length} 个 Zone`);
-          } catch (err: any) {
-            toast.error(err.message);
+          } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : "读取备份文件失败");
           }
           e.target.value = "";
         }}
@@ -157,7 +156,7 @@ function DiffTab() {
       if (!backup) throw new Error("先载入备份文件");
       return fn({ data: { backup } });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "差异对比失败"),
   });
   return (
     <div className="space-y-4">
@@ -176,15 +175,30 @@ function DiffTab() {
         <Card key={r.domain} className="p-4">
           <div className="font-mono font-semibold mb-2">
             {r.domain}
-            {r.missingZone && <Badge variant="destructive" className="ml-2">CF 中不存在此 Zone</Badge>}
+            {r.missingZone && (
+              <Badge variant="destructive" className="ml-2">
+                CF 中不存在此 Zone
+              </Badge>
+            )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-            <DiffCol title="仅在备份" color="text-blue-600" items={r.onlyInBackup.map((x) => `${x.type} ${x.name} → ${x.content}`)} />
-            <DiffCol title="仅在线上" color="text-orange-600" items={r.onlyInLive.map((x) => `${x.type} ${x.name} → ${x.content}`)} />
+            <DiffCol
+              title="仅在备份"
+              color="text-blue-600"
+              items={r.onlyInBackup.map((x) => `${x.type} ${x.name} → ${x.content}`)}
+            />
+            <DiffCol
+              title="仅在线上"
+              color="text-orange-600"
+              items={r.onlyInLive.map((x) => `${x.type} ${x.name} → ${x.content}`)}
+            />
             <DiffCol
               title="属性差异"
               color="text-purple-600"
-              items={r.changed.map((c) => `${c.backup.type} ${c.backup.name}: ttl ${c.live.ttl}→${c.backup.ttl}, proxied ${c.live.proxied}→${c.backup.proxied}`)}
+              items={r.changed.map(
+                (c) =>
+                  `${c.backup.type} ${c.backup.name}: ttl ${c.live.ttl}→${c.backup.ttl}, proxied ${c.live.proxied}→${c.backup.proxied}`,
+              )}
             />
           </div>
         </Card>
@@ -214,15 +228,19 @@ function RestoreTab() {
   const planFn = useServerFn(planRestoreFromBackup);
   const applyFn = useServerFn(applyRestorePlan);
   const [backup, setBackup] = useState<BackupZone[] | null>(null);
-  const [strategy, setStrategy] = useState<"add-missing" | "overwrite" | "replace-all">(
-    "add-missing",
-  );
+  const [strategy, setStrategy] = useState<RestoreStrategy>("add-missing");
   const [plans, setPlans] = useState<ZonePlan[] | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [applied, setApplied] = useState<
-    | null
-    | { results: { domain: string; created: number; updated: number; deleted: number; skipped: number; errors: string[] }[] }
-  >(null);
+  const [applied, setApplied] = useState<null | {
+    results: {
+      domain: string;
+      created: number;
+      updated: number;
+      deleted: number;
+      skipped: number;
+      errors: string[];
+    }[];
+  }>(null);
 
   const planMut = useMutation({
     mutationFn: async () => {
@@ -233,10 +251,13 @@ function RestoreTab() {
     onSuccess: (p) => {
       setPlans(p);
       setApplied(null);
-      const total = p.reduce((s, z) => s + z.summary.create + z.summary.update + z.summary.delete, 0);
+      const total = p.reduce(
+        (s, z) => s + z.summary.create + z.summary.update + z.summary.delete,
+        0,
+      );
       toast.success(`已生成计划：${total} 项变更（跳过不计）`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "生成变更计划失败"),
   });
 
   const applyMut = useMutation({
@@ -248,7 +269,7 @@ function RestoreTab() {
       setApplied(r);
       toast.success(`已应用到 Cloudflare：${r.results.length} 个 Zone`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "应用恢复计划失败"),
   });
 
   const totals = plans
@@ -282,16 +303,20 @@ function RestoreTab() {
           <Select
             value={strategy}
             onValueChange={(v) => {
-              setStrategy(v as any);
+              setStrategy(v as RestoreStrategy);
               setPlans(null);
               setApplied(null);
             }}
           >
-            <SelectTrigger className="max-w-md"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="max-w-md">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="add-missing">仅补齐缺失（线上已有则跳过）</SelectItem>
               <SelectItem value="overwrite">覆盖已存在（同 key 强制更新 ttl/proxied）</SelectItem>
-              <SelectItem value="replace-all">完全替换（先删除备份中不存在的记录，再写入）⚠</SelectItem>
+              <SelectItem value="replace-all">
+                完全替换（先删除备份中不存在的记录，再写入）⚠
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -384,13 +409,15 @@ function RestoreTab() {
                               </td>
                               <td className="p-2 font-mono">{o.record.type}</td>
                               <td className="p-2 font-mono">{o.record.name}</td>
-                              <td className="p-2 font-mono truncate max-w-xs">{o.record.content}</td>
+                              <td className="p-2 font-mono truncate max-w-xs">
+                                {o.record.content}
+                              </td>
                               <td className="p-2 text-muted-foreground">
                                 {o.op === "update"
                                   ? `ttl ${o.from.ttl}→${o.record.ttl}, proxied ${o.from.proxied}→${o.record.proxied}${o.from.priority !== o.record.priority ? `, prio ${o.from.priority ?? "-"}→${o.record.priority ?? "-"}` : ""}`
                                   : o.op === "skip"
                                     ? o.reason
-                                    : `ttl ${o.record.ttl}${["A","AAAA","CNAME"].includes(o.record.type) ? `, proxied ${o.record.proxied}` : ""}`}
+                                    : `ttl ${o.record.ttl}${["A", "AAAA", "CNAME"].includes(o.record.type) ? `, proxied ${o.record.proxied}` : ""}`}
                               </td>
                             </tr>
                           ))}
@@ -453,5 +480,9 @@ function OpBadge({ op }: { op: "create" | "update" | "delete" | "skip" }) {
     skip: { label: "跳过", cls: "bg-muted text-muted-foreground" },
   };
   const { label, cls } = map[op];
-  return <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${cls}`}>{label}</span>;
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${cls}`}>
+      {label}
+    </span>
+  );
 }
