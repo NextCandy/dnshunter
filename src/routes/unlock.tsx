@@ -10,8 +10,8 @@ import { Lock } from "lucide-react";
 export const Route = createFileRoute("/unlock")({
   head: () => ({
     meta: [
-      { title: "解锁 · DomainOps" },
-      { name: "description", content: "输入访问密码以进入 DomainOps 域名管理控制台。" },
+      { title: "登录 · dshunter" },
+      { name: "description", content: "登录 dshunter 域名管理控制台。" },
     ],
   }),
   component: UnlockPage,
@@ -20,6 +20,7 @@ export const Route = createFileRoute("/unlock")({
 function UnlockPage() {
   const router = useRouter();
   const unlock = useServerFn(unlockSite);
+  const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,14 +30,14 @@ function UnlockPage() {
     setLoading(true);
     setErr(null);
     try {
-      const r = await unlock({ data: { password: pw } });
+      const r = await unlock({ data: { email, password: pw } });
       if (r.ok) {
         await router.navigate({ to: "/" });
       } else {
-        setErr("密码错误");
+        setErr("账号或密码错误");
       }
-    } catch (e: any) {
-      setErr(e.message || "请求失败");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "请求失败");
     } finally {
       setLoading(false);
     }
@@ -49,20 +50,28 @@ function UnlockPage() {
           <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center">
             <Lock className="size-6 text-primary" />
           </div>
-          <h1 className="text-xl font-semibold">DomainOps</h1>
-          <p className="text-sm text-muted-foreground">请输入访问密码</p>
+          <h1 className="text-xl font-semibold">dshunter</h1>
+          <p className="text-sm text-muted-foreground">请输入后台账号和密码</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-3">
           <Input
+            type="email"
+            value={email}
+            autoComplete="username"
+            autoFocus
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="账号邮箱"
+          />
+          <Input
             type="password"
             value={pw}
-            autoFocus
+            autoComplete="current-password"
             onChange={(e) => setPw(e.target.value)}
             placeholder="密码"
           />
           {err && <p className="text-sm text-destructive">{err}</p>}
-          <Button className="w-full" disabled={loading || !pw}>
-            {loading ? "验证中..." : "进入"}
+          <Button className="w-full" disabled={loading || !email || !pw}>
+            {loading ? "验证中..." : "登录"}
           </Button>
         </form>
       </Card>
