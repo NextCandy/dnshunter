@@ -1,0 +1,28 @@
+services:
+  domainops:
+    build: .
+    image: domainops:latest
+    container_name: domainops
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # ===== 必填 =====
+      SESSION_SECRET: ${SESSION_SECRET}
+      SITE_PASSWORD: ${SITE_PASSWORD}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+
+      # ===== 注册商（按需配置）=====
+      SPACESHIP_API_KEY: ${SPACESHIP_API_KEY:-}
+      SPACESHIP_API_SECRET: ${SPACESHIP_API_SECRET:-}
+      DYNADOT_API_KEY: ${DYNADOT_API_KEY:-}
+      NAMECHEAP_API_USER: ${NAMECHEAP_API_USER:-}
+      NAMECHEAP_API_KEY: ${NAMECHEAP_API_KEY:-}
+      NAMECHEAP_USERNAME: ${NAMECHEAP_USERNAME:-}
+      NAMECHEAP_CLIENT_IP: ${NAMECHEAP_CLIENT_IP:-}
+      ALIYUN_ACCESS_KEY_ID: ${ALIYUN_ACCESS_KEY_ID:-}
+      ALIYUN_ACCESS_KEY_SECRET: ${ALIYUN_ACCESS_KEY_SECRET:-}
+      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID:-}
+      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY:-}
+      WEST_USERNAME: ${WEST_USERNAME:-}
+      WEST_API_PASSWORD: ${WEST_API_PASSWORD:-}

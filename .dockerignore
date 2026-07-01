@@ -1,0 +1,17 @@
+node_modules
+.output
+.nitro
+.vinxi
+.cache
+dist
+.git
+.github
+.vscode
+.idea
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.lovable
+coverage
