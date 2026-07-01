@@ -1,13 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   bulkAddRecords,
   executeDeleteRecords,
   previewDeleteRecords,
 } from "@/lib/cloudflare.functions";
 import { useDomains } from "@/lib/domain-store";
+import {
+  CF_TYPES,
+  CSV_TEMPLATE,
+  downloadBlob,
+  parseAndValidateCsv,
+  toCsv,
+  type CsvError,
+  type ValidatedRecord,
+} from "@/lib/csv";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Download, FileWarning, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/records")({
   head: () => ({ meta: [{ title: "解析记录 · DomainOps" }] }),
@@ -32,11 +41,8 @@ export const Route = createFileRoute("/_app/records")({
 
 type RecTpl = { type: string; name: string; content: string; ttl: number; proxied: boolean };
 
-const TYPES = ["A", "AAAA", "CNAME", "TXT", "MX", "NS", "CAA"];
-
 function RecordsPage() {
   const domains = useDomains();
-
   return (
     <div className="max-w-6xl">
       <h1 className="text-2xl font-bold mb-1">解析记录</h1>
@@ -79,6 +85,8 @@ function AddTab({ domains }: { domains: string[] }) {
   ]);
   const [csv, setCsv] = useState("");
 
+  const parsed = useMemo(() => (mode === "csv" ? parseAndValidateCsv(csv) : null), [mode, csv]);
+
   const exec = useMutation({
     mutationFn: async () => {
       let records: any[] = [];
@@ -90,7 +98,8 @@ function AddTab({ domains }: { domains: string[] }) {
           }
         }
       } else {
-        records = parseCsv(csv);
+        if (!parsed || parsed.errors.length > 0) throw new Error("CSV 存在校验错误，请先修正");
+        records = parsed.valid;
       }
       if (records.length === 0) throw new Error("没有可执行的记录");
       return addFn({ data: { records, upsert } });
@@ -99,10 +108,15 @@ function AddTab({ domains }: { domains: string[] }) {
     onSuccess: (r) => toast.success(`完成：${r.results.length} 条`),
   });
 
+  const csvValidCount = parsed?.valid.length ?? 0;
+  const csvErrorCount = parsed?.errors.length ?? 0;
+  const canExecute =
+    mode === "template" ? tpls.some((t) => t.content) : csvValidCount > 0 && csvErrorCount === 0;
+
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-3 flex-wrap">
           <Button
             variant={mode === "template" ? "default" : "outline"}
             size="sm"
@@ -127,13 +141,12 @@ function AddTab({ domains }: { domains: string[] }) {
           <div className="space-y-2">
             {tpls.map((t, i) => (
               <div key={i} className="grid grid-cols-[100px_1fr_2fr_80px_100px_40px] gap-2 items-center">
-                <Select
-                  value={t.type}
-                  onValueChange={(v) => update(i, { type: v })}
-                >
+                <Select value={t.type} onValueChange={(v) => update(i, { type: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {TYPES.map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                    {CF_TYPES.map((x) => (
+                      <SelectItem key={x} value={x}>{x}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Input placeholder="name (@ 或子域)" value={t.name} onChange={(e) => update(i, { name: e.target.value })} />
@@ -166,22 +179,45 @@ function AddTab({ domains }: { domains: string[] }) {
             </p>
           </div>
         ) : (
-          <div>
+          <div className="space-y-2">
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadBlob("records-template.csv", CSV_TEMPLATE, "text/csv")}
+              >
+                <Download className="size-4 mr-1" /> 下载 CSV 模板
+              </Button>
+              <label className="inline-flex items-center gap-1 border border-input rounded-md px-3 py-1.5 text-sm cursor-pointer bg-background hover:bg-accent">
+                上传 CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setCsv(await f.text());
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
             <Textarea
-              rows={8}
+              rows={10}
               className="font-mono text-xs"
-              placeholder={"domain,type,name,content,ttl,proxied\nexample.com,A,@,1.2.3.4,1,true"}
+              placeholder={"domain,type,name,content,ttl,proxied,priority\nexample.com,A,@,1.2.3.4,1,true,"}
               value={csv}
               onChange={(e) => setCsv(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              表头：domain,type,name,content,ttl,proxied
+            <p className="text-xs text-muted-foreground">
+              必填列：domain, type, name, content。可选：ttl（1=auto）、proxied、priority（MX 必填）。
             </p>
+            {parsed && csv.trim() && <CsvReport parsed={parsed} />}
           </div>
         )}
       </Card>
 
-      <Button onClick={() => exec.mutate()} disabled={exec.isPending}>
+      <Button onClick={() => exec.mutate()} disabled={exec.isPending || !canExecute}>
         {exec.isPending ? "执行中..." : "执行批量添加"}
       </Button>
 
@@ -192,6 +228,78 @@ function AddTab({ domains }: { domains: string[] }) {
   function update(i: number, patch: Partial<RecTpl>) {
     setTpls(tpls.map((t, j) => (i === j ? { ...t, ...patch } : t)));
   }
+}
+
+function CsvReport({
+  parsed,
+}: {
+  parsed: { valid: ValidatedRecord[]; errors: CsvError[]; totalRows: number };
+}) {
+  const hasErr = parsed.errors.length > 0;
+  return (
+    <Card className={`p-3 border ${hasErr ? "border-destructive/50 bg-destructive/5" : "border-green-500/40 bg-green-500/5"}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm flex items-center gap-2">
+          {hasErr ? (
+            <>
+              <FileWarning className="size-4 text-destructive" />
+              <span>
+                共 {parsed.totalRows} 行 · <span className="text-green-600">{parsed.valid.length} 通过</span> ·
+                <span className="text-destructive ml-1">{parsed.errors.length} 错误</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="size-4 text-green-600" />
+              <span>
+                共 {parsed.totalRows} 行 · 全部通过 ({parsed.valid.length})
+              </span>
+            </>
+          )}
+        </div>
+        {hasErr && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              downloadBlob(
+                "csv-errors.csv",
+                "row,field,message\n" +
+                  parsed.errors
+                    .map((e) => `${e.row},${e.field},"${e.message.replace(/"/g, '""')}"`)
+                    .join("\n"),
+                "text/csv",
+              )
+            }
+          >
+            <Download className="size-4 mr-1" /> 下载错误清单
+          </Button>
+        )}
+      </div>
+      {hasErr && (
+        <div className="border rounded max-h-56 overflow-auto bg-background">
+          <table className="w-full text-xs">
+            <thead className="bg-muted sticky top-0">
+              <tr>
+                <th className="p-2 text-left w-16">行号</th>
+                <th className="p-2 text-left w-24">字段</th>
+                <th className="p-2 text-left">错误</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parsed.errors.map((e, i) => (
+                <tr key={i} className="border-t">
+                  <td className="p-2 font-mono">{e.row}</td>
+                  <td className="p-2 font-mono">{e.field}</td>
+                  <td className="p-2 text-destructive">{e.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
 }
 
 function DeleteTab({ domains }: { domains: string[] }) {
@@ -244,13 +352,15 @@ function DeleteTab({ domains }: { domains: string[] }) {
       <Card className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <div className="text-sm mb-1">类型（可选）</div>
-          <Select value={type} onValueChange={setType}>
+          <Select value={type || "__all"} onValueChange={(v) => setType(v === "__all" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="任意类型" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">任意类型</SelectItem>
-              {TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              <SelectItem value="__all">任意类型</SelectItem>
+              {CF_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -264,9 +374,34 @@ function DeleteTab({ domains }: { domains: string[] }) {
         </div>
       </Card>
 
-      <Button onClick={() => preview.mutate()} disabled={preview.isPending}>
-        {preview.isPending ? "扫描中..." : "预览匹配记录"}
-      </Button>
+      <div className="flex gap-2">
+        <Button onClick={() => preview.mutate()} disabled={preview.isPending}>
+          {preview.isPending ? "扫描中..." : "预览匹配记录"}
+        </Button>
+        {matches.length > 0 && (
+          <Button
+            variant="outline"
+            onClick={() =>
+              downloadBlob(
+                "matched-records.csv",
+                toCsv(
+                  matches.map((m) => ({
+                    domain: m.domain,
+                    type: m.type,
+                    name: m.name,
+                    content: m.content,
+                    ttl: 1,
+                    proxied: false,
+                  })),
+                ),
+                "text/csv",
+              )
+            }
+          >
+            <Download className="size-4 mr-1" /> 导出匹配 CSV
+          </Button>
+        )}
+      </div>
 
       {matches.length > 0 && (
         <Card className="p-4">
@@ -301,7 +436,8 @@ function DeleteTab({ domains }: { domains: string[] }) {
                         checked={selected.has(m.id)}
                         onCheckedChange={() => {
                           const n = new Set(selected);
-                          n.has(m.id) ? n.delete(m.id) : n.add(m.id);
+                          if (n.has(m.id)) n.delete(m.id);
+                          else n.add(m.id);
                           setSelected(n);
                         }}
                       />
@@ -365,26 +501,4 @@ function ResultTable({ results, kind }: { results: any[]; kind: "add" | "delete"
       </div>
     </Card>
   );
-}
-
-function parseCsv(text: string): any[] {
-  const out: any[] = [];
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length === 0) return out;
-  const header = lines[0].split(",").map((s) => s.trim().toLowerCase());
-  for (const line of lines.slice(1)) {
-    const cols = line.split(",").map((s) => s.trim());
-    const row: any = {};
-    header.forEach((h, i) => (row[h] = cols[i]));
-    if (!row.domain || !row.type || !row.content) continue;
-    out.push({
-      domain: row.domain.toLowerCase(),
-      type: row.type.toUpperCase(),
-      name: row.name || "@",
-      content: row.content,
-      ttl: row.ttl ? Number(row.ttl) : 1,
-      proxied: String(row.proxied).toLowerCase() === "true",
-    });
-  }
-  return out;
 }

@@ -2,7 +2,7 @@ import { createFileRoute, Link, Outlet, redirect, useRouter } from "@tanstack/re
 import { useServerFn } from "@tanstack/react-start";
 import { checkGate, lockSite } from "@/lib/gate.functions";
 import { Button } from "@/components/ui/button";
-import { Globe, Link2, ListTree, Settings, LogOut, LayoutDashboard } from "lucide-react";
+import { Globe, Link2, ListTree, Settings, LogOut, LayoutDashboard, DatabaseBackup } from "lucide-react";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async () => {
@@ -34,8 +34,11 @@ function AppLayout() {
         <NavItem to="/records" icon={<ListTree className="size-4" />}>
           解析记录
         </NavItem>
+        <NavItem to="/backup" icon={<DatabaseBackup className="size-4" />}>
+          备份与恢复
+        </NavItem>
         <NavItem to="/settings" icon={<Settings className="size-4" />}>
-          Token 设置
+          设置
         </NavItem>
         <div className="mt-auto">
           <Button

@@ -16,6 +16,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppRecordsRouteImport } from './routes/_app.records'
 import { Route as AppDomainsRouteImport } from './routes/_app.domains'
 import { Route as AppBindRouteImport } from './routes/_app.bind'
+import { Route as AppBackupRouteImport } from './routes/_app.backup'
 
 const UnlockRoute = UnlockRouteImport.update({
   id: '/unlock',
@@ -51,10 +52,16 @@ const AppBindRoute = AppBindRouteImport.update({
   path: '/bind',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBackupRoute = AppBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/unlock': typeof UnlockRoute
+  '/backup': typeof AppBackupRoute
   '/bind': typeof AppBindRoute
   '/domains': typeof AppDomainsRoute
   '/records': typeof AppRecordsRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/unlock': typeof UnlockRoute
+  '/backup': typeof AppBackupRoute
   '/bind': typeof AppBindRoute
   '/domains': typeof AppDomainsRoute
   '/records': typeof AppRecordsRoute
@@ -72,6 +80,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/unlock': typeof UnlockRoute
+  '/_app/backup': typeof AppBackupRoute
   '/_app/bind': typeof AppBindRoute
   '/_app/domains': typeof AppDomainsRoute
   '/_app/records': typeof AppRecordsRoute
@@ -80,13 +89,28 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/unlock' | '/bind' | '/domains' | '/records' | '/settings'
+  fullPaths:
+    | '/'
+    | '/unlock'
+    | '/backup'
+    | '/bind'
+    | '/domains'
+    | '/records'
+    | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/unlock' | '/bind' | '/domains' | '/records' | '/settings' | '/'
+  to:
+    | '/unlock'
+    | '/backup'
+    | '/bind'
+    | '/domains'
+    | '/records'
+    | '/settings'
+    | '/'
   id:
     | '__root__'
     | '/_app'
     | '/unlock'
+    | '/_app/backup'
     | '/_app/bind'
     | '/_app/domains'
     | '/_app/records'
@@ -150,10 +174,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBindRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/backup': {
+      id: '/_app/backup'
+      path: '/backup'
+      fullPath: '/backup'
+      preLoaderRoute: typeof AppBackupRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppBackupRoute: typeof AppBackupRoute
   AppBindRoute: typeof AppBindRoute
   AppDomainsRoute: typeof AppDomainsRoute
   AppRecordsRoute: typeof AppRecordsRoute
@@ -162,6 +194,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppBackupRoute: AppBackupRoute,
   AppBindRoute: AppBindRoute,
   AppDomainsRoute: AppDomainsRoute,
   AppRecordsRoute: AppRecordsRoute,
@@ -178,13 +211,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

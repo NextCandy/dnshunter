@@ -131,6 +131,7 @@ type RecordSpec = {
   content: string;
   ttl?: number;
   proxied?: boolean;
+  priority?: number;
 };
 
 function fullName(zone: string, name: string): string {
@@ -187,6 +188,7 @@ export const bulkAddRecords = createServerFn({ method: "POST" })
         ttl: rec.ttl ?? 1,
       };
       if (["A", "AAAA", "CNAME"].includes(rec.type)) payload.proxied = Boolean(rec.proxied);
+      if (rec.priority !== undefined) payload.priority = rec.priority;
 
       try {
         if (data.upsert) {

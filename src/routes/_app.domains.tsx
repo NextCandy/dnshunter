@@ -18,7 +18,16 @@ export const Route = createFileRoute("/_app/domains")({
   component: DomainsPage,
 });
 
-type Source = "manual" | "spaceship" | "dynadot" | "cf-registrar" | "cloudflare-zone";
+type Source =
+  | "manual"
+  | "spaceship"
+  | "dynadot"
+  | "cf-registrar"
+  | "cloudflare-zone"
+  | "namecheap"
+  | "aliyun"
+  | "tencent"
+  | "west";
 type Entry = { domain: string; sources: Set<Source> };
 
 function DomainsPage() {
@@ -34,6 +43,10 @@ function DomainsPage() {
     dynadot: [],
     "cf-registrar": [],
     "cloudflare-zone": [],
+    namecheap: [],
+    aliyun: [],
+    tencent: [],
+    west: [],
   });
 
   const persisted = useDomains();
@@ -125,6 +138,34 @@ function DomainsPage() {
               loading={pull.isPending && pull.variables === "dynadot"}
               count={pulled.dynadot.length}
               onClick={() => pull.mutate("dynadot")}
+            />
+            <PullButton
+              label="Namecheap"
+              ok={tokens.data?.namecheap}
+              loading={pull.isPending && pull.variables === "namecheap"}
+              count={pulled.namecheap.length}
+              onClick={() => pull.mutate("namecheap")}
+            />
+            <PullButton
+              label="阿里云（万网）"
+              ok={tokens.data?.aliyun}
+              loading={pull.isPending && pull.variables === "aliyun"}
+              count={pulled.aliyun.length}
+              onClick={() => pull.mutate("aliyun")}
+            />
+            <PullButton
+              label="腾讯云"
+              ok={tokens.data?.tencent}
+              loading={pull.isPending && pull.variables === "tencent"}
+              count={pulled.tencent.length}
+              onClick={() => pull.mutate("tencent")}
+            />
+            <PullButton
+              label="西部数码 West.cn"
+              ok={tokens.data?.west}
+              loading={pull.isPending && pull.variables === "west"}
+              count={pulled.west.length}
+              onClick={() => pull.mutate("west")}
             />
           </div>
         </Card>

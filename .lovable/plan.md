@@ -1,65 +1,76 @@
+# DomainOps 增强计划
 
-# 批量域名管理工具（Cloudflare + 多注册商）
+## 一、注册商适配扩展
 
-一个单用户的 Web 控制台。所有 API token 保存在服务端（Lovable Cloud 密钥），前端只调用自家的 TanStack Start server functions，永远不把 token 暴露到浏览器。
+新增以下 Adapter，实现统一接口 `listDomains()` / `updateNameservers()`：
 
-## 功能范围
+- **Namecheap** (`src/lib/registrars/namecheap.server.ts`)
+  - API：`https://api.namecheap.com/xml.response`（XML 响应，需简易解析）
+  - 需要 secrets：`NAMECHEAP_API_USER`、`NAMECHEAP_API_KEY`、`NAMECHEAP_USERNAME`、`NAMECHEAP_CLIENT_IP`
+  - 命令：`namecheap.domains.getList`、`namecheap.domains.dns.setCustom`
+- **阿里云 (Aliyun / 万网)** (`src/lib/registrars/aliyun.server.ts`)
+  - Domain API：`domain.aliyuncs.com` `QueryDomainList` / `SaveSingleTaskForModifyingDNSHost`
+  - 需要 `ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET`
+  - 需实现 ACS3-HMAC-SHA256 签名
+- **腾讯云 (DNSPod / 域名)** (`src/lib/registrars/tencent.server.ts`)
+  - `domain.tencentcloudapi.com` `DescribeDomainNameList` / `ModifyDomainDNSBatch`
+  - 需要 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`（TC3-HMAC-SHA256 签名）
+- **西部数码 (West.cn)** (`src/lib/registrars/west.server.ts`)
+  - `https://api.west.cn/api/v2` 简单 token 认证
+  - 需要 `WEST_USERNAME`、`WEST_API_PASSWORD`
 
-1. **域名来源（去重合并）**
-   - 手动粘贴：文本框，一行一个域名，自动去掉 `http(s)://`、路径、大小写、尾点。
-   - 注册商拉取：Spaceship、Cloudflare Registrar、Dynadot（用已保存的 token 分别拉取）。
-   - 合并列表：以根域名为 key 去重，标注来源（可能同时来自"手动 + Spaceship"）。
+在 `/settings` 与 `/domains` 页面显示这些新源；未配置 token 时按钮 disabled。
 
-2. **批量绑定到 Cloudflare**
-   - 为每个域名在 CF 创建 Zone（可选 account 选择、free plan、Full 模式），返回 CF 分配的 NS。
-   - 可选"自动改 NS"：调用对应注册商 API 把 NS 改为 CF 的两个地址（Spaceship / Dynadot / Cloudflare Registrar 支持，其他标记为"需手动"并展示 NS 供复制）。
-   - 可选"触发激活检查"：调用 CF `activation_check`，轮询 zone 状态直到 active 或超时。
-   - 结果表：每行显示 域名 / Zone 创建 / NS 更新 / 激活 三个状态 + 错误信息。
+## 二、解析记录备份 / 恢复 / 差异对比
 
-3. **批量添加解析记录**
-   - 模式 A · 模板：定义一组记录（type/name/content/ttl/proxied），勾选目标域名，一键应用到所有选中 zone。
-   - 模式 B · CSV 导入：`domain,type,name,content,ttl,proxied` 逐行执行。
-   - 支持 upsert 选项（若同 name+type 已存在则更新，否则新建）。
+新页面 **`/backup`**：
 
-4. **批量删除解析记录**
-   - 按过滤条件删除：选中域名 + 按 type / name 前后缀 / content 匹配。
-   - 预览命中记录 → 二次确认 → 执行。
-   - 也支持通过 CSV（同上格式）精确删除。
+- **导出**：选择一个或多个 Zone → 一键导出为 CSV 或 JSON（含 type / name / content / ttl / proxied / priority）。文件通过浏览器下载。
+- **恢复**：上传备份文件 → 预览将执行的 `create / update / skip` 动作 → 确认后批量执行。
+- **差异对比**：上传备份或选择两个 Zone → 展示 `only in A` / `only in B` / `changed` 三个表格。
 
-5. **实时进度与日志**
-   - 每个批量操作用一个"任务卡片"显示进度条 + 逐行结果，失败可单独重试。
+Server functions：`exportZoneRecords`、`diffRecords`、`restoreRecords`（复用现有 upsert 逻辑）。
 
-## 页面结构
+## 三、深色 / 浅色主题切换
 
-```text
-/                     仪表盘：token 状态、账户概况、快捷入口
-/settings/tokens      配置 Cloudflare / Spaceship / Dynadot token（写入服务端密钥）
-/domains              域名总表：粘贴 + 拉取 + 去重合并 + 多选
-/bind                 批量绑定到 Cloudflare（Zone / NS / 激活）
-/records              批量解析记录：添加（模板/CSV）与删除（过滤/CSV）
-```
+- 安装 `next-themes` 并在 `__root.tsx` 用 `ThemeProvider`（`attribute="class"`, `defaultTheme="system"`）包裹。
+- 在 `/settings` 顶部新增主题切换（Light / Dark / System 三选一 Toggle Group）。
+- 审计所有页面/组件，把 `bg-white`、`text-black` 等硬编码替换为 `bg-background` / `text-foreground` 等语义 token，确保跟随主题。
 
-顶部导航 + 侧栏。深色简洁风格，shadcn/ui 组件（Table、Dialog、Progress、Tabs、Textarea、Card）。
+## 四、CSV 模板下载 + 导入校验 + 错误定位
 
-## 技术方案（技术细节）
+- 在 `/records` 页面加"下载 CSV 模板"按钮（写死一个含表头 + 2 行示例的字符串，`Blob` 下载）。
+- 导入解析流程重写：
+  1. 用 Zod schema 校验每一行（`type ∈ CF 支持列表`、`name` 合法域名/@、`content` 按 type 不同校验、`ttl` 数字或 auto、`proxied` bool、`priority` MX 必填）。
+  2. 显示"校验结果"表：绿色✔ 通过，红色✘ 带 `行号 + 字段 + 原因`。
+  3. 全部通过前禁用"执行"按钮；用户可下载错误清单 CSV。
+- 同一流程也用于批量删除的 CSV 匹配。
 
-- **框架**：TanStack Start（现有模板），路由文件全部走 `src/routes/*`。
-- **Token 存储**：`secrets--add_secret` 保存 `CLOUDFLARE_API_TOKEN`、`SPACESHIP_API_KEY`、`SPACESHIP_API_SECRET`、`DYNADOT_API_KEY`。用户在 `/settings/tokens` 触发 add_secret 表单填写。
-- **访问控制（单用户）**：额外加一个共享密码门（`SITE_PASSWORD` + `SESSION_SECRET`，encrypted session cookie），保护所有页面与 server functions，避免公网暴露。
-- **Server functions**（`src/lib/*.functions.ts`，全部带 session 校验中间件）：
-  - `listRegistrarDomains({registrar})` → 调注册商 API。
-  - `bindDomainsToCloudflare({domains, accountId, updateNS, activationCheck})` → 逐个执行，返回结果数组；使用 `ReadableStream` + server route（`/api/bulk-bind`）分块推送进度更能友好，但 v1 可先同步返回，前端按批调用（例如每次 5 个）。
-  - `bulkAddRecords({zoneIds|domains, records[], upsert})`
-  - `bulkDeleteRecords({domains, filter})` + `previewDeleteRecords`（返回命中列表）
-- **注册商适配层**：`src/lib/registrars/{cloudflare,spaceship,dynadot}.server.ts`，统一接口 `listDomains()`、`updateNameservers(domain, ns[])`。
-- **CF 调用**：`https://api.cloudflare.com/client/v4`，POST `/zones`（创建），PATCH `/zones/:id`（激活检查），`/zones/:id/dns_records`（增删查）。
-- **速率与错误**：每个批量任务串行 + 每次调用捕获错误写入返回结果；对 429 简单退避 1s 重试一次。
-- **无数据库**：不需要 Lovable Cloud DB；操作日志仅前端内存，用户可导出 CSV。
+## 五、Vercel 部署文档
 
-## 不做（可后续再加）
-- 定时任务 / 历史审计
-- 多用户 & 角色
-- 更多注册商（Namecheap、GoDaddy…）
-- WHOIS / 到期提醒
+在 `/settings` 页面底部新增可折叠"部署到 Vercel"指南，同时把内容写入项目根 `DEPLOY_VERCEL.md`：
 
-第一版目标是"能把一批域名快速塞进 Cloudflare 并统一管理 DNS"。
+1. Fork / Push 到 GitHub
+2. Vercel Import Project，Framework 选 `Other`（TanStack Start 使用 Vite）
+3. Build Command：`bun run build`，Output：`.output/public`（TanStack Start 默认）
+4. 环境变量清单（逐个列出）：`SESSION_SECRET`、`SITE_PASSWORD`、`CLOUDFLARE_API_TOKEN`、Spaceship / Dynadot / Namecheap / Aliyun / Tencent / West 全套变量
+5. 数据库：项目当前无 DB，全部状态存 Cloudflare / 注册商侧；如需持久化，可另接 Neon/Supabase
+6. 服务端函数：TanStack `createServerFn` 自动生成 `/_serverFn/*` 路由，Vercel Edge/Node runtime 均可，无需额外配置
+7. 首次部署后测试 `/unlock`、`/settings` token 状态
+
+## 技术细节
+
+- 所有注册商 adapter 遵循已有 `RegistrarAdapter` 接口，失败返回 `{ ok:false, error }`，避免抛错。
+- 中国注册商签名放在各自 `.server.ts` 内，使用 `node:crypto`；确保 Cloudflare Workers 兼容（`crypto.createHmac` 通过 nodejs_compat 可用）。
+- Namecheap 需用户先在其后台加入白名单 IP；文档中说明。
+- 恢复/差异使用稳定 key `${type}|${name}|${content}` 匹配。
+- Zod 校验错误结构：`{ row, field, message }`，前端表格高亮。
+- 主题切换后 shadcn 组件自动适配；对自定义卡片检查一次。
+
+## 交付顺序
+
+1. 主题切换（影响所有后续页面预览）
+2. CSV 模板 + 校验
+3. 备份 / 恢复 / 差异
+4. 注册商 adapters（先 Namecheap，再国内三家 + West）
+5. Vercel 部署文档
