@@ -13,6 +13,9 @@ import { Route as UnlockRouteImport } from './routes/unlock'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
+import { Route as AppRecordsRouteImport } from './routes/_app.records'
+import { Route as AppDomainsRouteImport } from './routes/_app.domains'
+import { Route as AppBindRouteImport } from './routes/_app.bind'
 
 const UnlockRoute = UnlockRouteImport.update({
   id: '/unlock',
@@ -33,14 +36,35 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRecordsRoute = AppRecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDomainsRoute = AppDomainsRouteImport.update({
+  id: '/domains',
+  path: '/domains',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBindRoute = AppBindRouteImport.update({
+  id: '/bind',
+  path: '/bind',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/unlock': typeof UnlockRoute
+  '/bind': typeof AppBindRoute
+  '/domains': typeof AppDomainsRoute
+  '/records': typeof AppRecordsRoute
   '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
   '/unlock': typeof UnlockRoute
+  '/bind': typeof AppBindRoute
+  '/domains': typeof AppDomainsRoute
+  '/records': typeof AppRecordsRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
 }
@@ -48,15 +72,26 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/unlock': typeof UnlockRoute
+  '/_app/bind': typeof AppBindRoute
+  '/_app/domains': typeof AppDomainsRoute
+  '/_app/records': typeof AppRecordsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/unlock' | '/settings'
+  fullPaths: '/' | '/unlock' | '/bind' | '/domains' | '/records' | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/unlock' | '/settings' | '/'
-  id: '__root__' | '/_app' | '/unlock' | '/_app/settings' | '/_app/'
+  to: '/unlock' | '/bind' | '/domains' | '/records' | '/settings' | '/'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/unlock'
+    | '/_app/bind'
+    | '/_app/domains'
+    | '/_app/records'
+    | '/_app/settings'
+    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -94,15 +129,42 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/records': {
+      id: '/_app/records'
+      path: '/records'
+      fullPath: '/records'
+      preLoaderRoute: typeof AppRecordsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/domains': {
+      id: '/_app/domains'
+      path: '/domains'
+      fullPath: '/domains'
+      preLoaderRoute: typeof AppDomainsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/bind': {
+      id: '/_app/bind'
+      path: '/bind'
+      fullPath: '/bind'
+      preLoaderRoute: typeof AppBindRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppBindRoute: typeof AppBindRoute
+  AppDomainsRoute: typeof AppDomainsRoute
+  AppRecordsRoute: typeof AppRecordsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppBindRoute: AppBindRoute,
+  AppDomainsRoute: AppDomainsRoute,
+  AppRecordsRoute: AppRecordsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
 }
