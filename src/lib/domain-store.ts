@@ -5,15 +5,27 @@ const KEY = "domainops.selected";
 
 const listeners = new Set<() => void>();
 const EMPTY: string[] = [];
+let memoryDomains: string[] = EMPTY;
 
 // 缓存快照：只有当 localStorage 原始字符串变化时才返回新数组引用，否则返回同一引用。
 // 否则 useSyncExternalStore 每次渲染都拿到新数组 → 判定 store 变化 → 无限重渲染（React #185）。
 let cachedRaw: string | null = null;
 let cachedDomains: string[] = EMPTY;
 
+function getStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function getSnapshot(): string[] {
   if (typeof window === "undefined") return EMPTY;
-  const raw = localStorage.getItem(KEY);
+  const storage = getStorage();
+  if (!storage) return memoryDomains;
+  const raw = storage.getItem(KEY);
   if (raw === cachedRaw) return cachedDomains;
   cachedRaw = raw;
   try {
@@ -25,8 +37,10 @@ function getSnapshot(): string[] {
 }
 
 export function setDomains(domains: string[]) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(KEY, JSON.stringify({ domains }));
+  memoryDomains = domains;
+  const storage = getStorage();
+  if (storage) {
+    storage.setItem(KEY, JSON.stringify({ domains }));
   }
   listeners.forEach((l) => l());
 }
