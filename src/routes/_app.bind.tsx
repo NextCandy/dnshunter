@@ -48,7 +48,7 @@ function BindPage() {
           activationCheck,
         },
       }),
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "批量绑定失败"),
   });
 
   const results = bind.data?.results || [];
@@ -100,12 +100,17 @@ function BindPage() {
 
             <div>
               <div className="text-sm font-medium mb-1">自动更新 NS（可选）</div>
-              <Select value={updateNS} onValueChange={(v) => setUpdateNS(v as any)}>
+              <Select
+                value={updateNS || "__none"}
+                onValueChange={(v) =>
+                  setUpdateNS(v === "__none" ? "" : (v as "spaceship" | "dynadot" | "cf-registrar"))
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="不改（只创建 Zone）" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">不改（只创建 Zone）</SelectItem>
+                  <SelectItem value="__none">不改（只创建 Zone）</SelectItem>
                   <SelectItem value="spaceship" disabled={!tokens.data?.spaceship}>
                     Spaceship
                   </SelectItem>

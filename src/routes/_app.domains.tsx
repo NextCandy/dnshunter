@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
-import { getTokenStatus, listRegistrarDomains } from "@/lib/registrars.functions";
+import { useEffect, useMemo, useState } from "react";
+import { getTokenStatus, listRegistrarDomains, type Registrar } from "@/lib/registrars.functions";
 import { listZones } from "@/lib/cloudflare.functions";
 import { parseDomainList } from "@/lib/domain-utils";
 import { setDomains, useDomains } from "@/lib/domain-store";
@@ -52,20 +52,24 @@ function DomainsPage() {
   const persisted = useDomains();
   const [selected, setSelected] = useState<Set<string>>(new Set(persisted));
 
+  useEffect(() => {
+    setSelected(new Set(persisted));
+  }, [persisted]);
+
   const pull = useMutation({
     mutationFn: async (src: Source) => {
       if (src === "cloudflare-zone") {
         const r = await zonesFn();
         return { src, domains: r.zones.map((z) => z.name) };
       }
-      const r = await listFn({ data: { registrar: src as any } });
+      const r = await listFn({ data: { registrar: src as Registrar } });
       return { src, domains: r.domains };
     },
     onSuccess: ({ src, domains }) => {
       setPulled((p) => ({ ...p, [src]: domains }));
       toast.success(`${src}: 拉取到 ${domains.length} 个域名`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "拉取域名失败"),
   });
 
   const merged = useMemo<Entry[]>(() => {

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 // Simple cross-page store for the working domain set. Client-only.
 const KEY = "domainops.selected";
@@ -46,12 +46,16 @@ export function setDomains(domains: string[]) {
 }
 
 export function useDomains(): string[] {
-  return useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-    getSnapshot,
-    () => EMPTY,
-  );
+  const [domains, setDomainsState] = useState<string[]>(EMPTY);
+
+  useEffect(() => {
+    const update = () => setDomainsState(getSnapshot());
+    update();
+    listeners.add(update);
+    return () => {
+      listeners.delete(update);
+    };
+  }, []);
+
+  return domains;
 }
