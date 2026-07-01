@@ -1,11 +1,11 @@
 services:
-  domainops:
+  dshunter:
     build: .
-    image: domainops:latest
-    container_name: domainops
+    image: dshunter:latest
+    container_name: dshunter
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-3000}:3000"
+      - "${HOST_PORT:-8834}:3000"
     environment:
       # ===== 必填 =====
       SESSION_SECRET: ${SESSION_SECRET}
@@ -15,7 +15,7 @@ services:
       # ===== NAS 部署 =====
       TZ: ${TZ:-Asia/Shanghai}
       # 内网 http 访问设为 false，否则解锁后 Cookie 不下发会被踢回登录页；对外 HTTPS 保持 true
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
 
       # ===== 注册商（按需配置）=====
       SPACESHIP_API_KEY: ${SPACESHIP_API_KEY:-}
@@ -46,3 +46,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - dshunter_net
+
+networks:
+  dshunter_net:
+    name: dshunter_net
+    driver: bridge
