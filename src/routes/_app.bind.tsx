@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_app/bind")({
-  head: () => ({ meta: [{ title: "批量绑定 · DomainOps" }] }),
+  head: () => ({ meta: [{ title: "批量绑定 · dshunter" }] }),
   component: BindPage,
 });
 

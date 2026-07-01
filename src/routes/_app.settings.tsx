@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/settings")({
-  head: () => ({ meta: [{ title: "设置 · DomainOps" }] }),
+  head: () => ({ meta: [{ title: "设置 · dshunter" }] }),
   component: SettingsPage,
 });
 

@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import { Download, Upload, GitCompare, RotateCcw, ListChecks, Play } from "lucide-react";
 
 export const Route = createFileRoute("/_app/backup")({
-  head: () => ({ meta: [{ title: "备份与恢复 · DomainOps" }] }),
+  head: () => ({ meta: [{ title: "备份与恢复 · dshunter" }] }),
   component: BackupPage,
 });
 
@@ -82,7 +82,7 @@ function ExportTab({ domains }: { domains: string[] }) {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       if (fmt === "json") {
         downloadBlob(
-          `domainops-backup-${stamp}.json`,
+          `dshunter-backup-${stamp}.json`,
           JSON.stringify(r.zones, null, 2),
           "application/json",
         );
@@ -90,7 +90,7 @@ function ExportTab({ domains }: { domains: string[] }) {
         const flat = r.zones.flatMap((z) =>
           z.records.map((rec) => ({ ...rec, domain: z.domain })),
         );
-        downloadBlob(`domainops-backup-${stamp}.csv`, toCsv(flat), "text/csv");
+        downloadBlob(`dshunter-backup-${stamp}.csv`, toCsv(flat), "text/csv");
       }
       return r;
     },

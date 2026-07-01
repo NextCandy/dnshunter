@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Globe, Link2, ListTree, Settings } from "lucide-react";
 
 export const Route = createFileRoute("/_app/")({
-  head: () => ({ meta: [{ title: "仪表盘 · DomainOps" }] }),
+  head: () => ({ meta: [{ title: "仪表盘 · dshunter" }] }),
   component: Dashboard,
 });
 

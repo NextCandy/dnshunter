@@ -2,7 +2,15 @@ import { createFileRoute, Link, Outlet, redirect, useRouter } from "@tanstack/re
 import { useServerFn } from "@tanstack/react-start";
 import { checkGate, lockSite } from "@/lib/gate.functions";
 import { Button } from "@/components/ui/button";
-import { Globe, Link2, ListTree, Settings, LogOut, LayoutDashboard, DatabaseBackup } from "lucide-react";
+import {
+  Globe,
+  Link2,
+  ListTree,
+  Settings,
+  LogOut,
+  LayoutDashboard,
+  DatabaseBackup,
+} from "lucide-react";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: async () => {
@@ -19,7 +27,7 @@ function AppLayout() {
     <div className="min-h-screen flex bg-background text-foreground">
       <aside className="w-56 border-r border-border p-4 flex flex-col gap-1">
         <div className="px-2 py-3 mb-2">
-          <div className="font-bold text-lg">DomainOps</div>
+          <div className="font-bold text-lg">dshunter</div>
           <div className="text-xs text-muted-foreground">批量域名管理</div>
         </div>
         <NavItem to="/" icon={<LayoutDashboard className="size-4" />}>
@@ -61,13 +69,23 @@ function AppLayout() {
   );
 }
 
-function NavItem({ to, icon, children }: { to: string; icon: React.ReactNode; children: React.ReactNode }) {
+function NavItem({
+  to,
+  icon,
+  children,
+}: {
+  to: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       to={to}
       className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent"
       activeOptions={{ exact: to === "/" }}
-      activeProps={{ className: "flex items-center gap-2 px-3 py-2 rounded-md text-sm bg-accent font-medium" }}
+      activeProps={{
+        className: "flex items-center gap-2 px-3 py-2 rounded-md text-sm bg-accent font-medium",
+      }}
     >
       {icon}
       {children}

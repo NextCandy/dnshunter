@@ -75,14 +75,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "DomainOps · 批量域名管理" },
-      { name: "description", content: "批量将域名接入 Cloudflare，通过注册商 API 或粘贴导入，一键管理 DNS 解析记录。" },
-      { property: "og:title", content: "DomainOps · 批量域名管理" },
-      { property: "og:description", content: "批量将域名接入 Cloudflare，通过注册商 API 或粘贴导入，一键管理 DNS 解析记录。" },
+      { title: "dshunter · 批量域名管理" },
+      {
+        name: "description",
+        content: "批量将域名接入 Cloudflare，通过注册商 API 或粘贴导入，一键管理 DNS 解析记录。",
+      },
+      { property: "og:title", content: "dshunter · 批量域名管理" },
+      {
+        property: "og:description",
+        content: "批量将域名接入 Cloudflare，通过注册商 API 或粘贴导入，一键管理 DNS 解析记录。",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "DomainOps · 批量域名管理" },
-      { name: "twitter:description", content: "批量将域名接入 Cloudflare，通过注册商 API 或粘贴导入，一键管理 DNS 解析记录。" },
+      { name: "twitter:title", content: "dshunter · 批量域名管理" },
+      {
+        name: "twitter:description",
+        content: "批量将域名接入 Cloudflare，通过注册商 API 或粘贴导入，一键管理 DNS 解析记录。",
+      },
     ],
     links: [
       {
@@ -100,7 +109,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="zh">
+    <html lang="zh" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <HeadContent />

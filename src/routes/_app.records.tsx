@@ -35,7 +35,7 @@ import { toast } from "sonner";
 import { Trash2, Plus, Download, FileWarning, CheckCircle2 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/records")({
-  head: () => ({ meta: [{ title: "解析记录 · DomainOps" }] }),
+  head: () => ({ meta: [{ title: "解析记录 · dshunter" }] }),
   component: RecordsPage,
 });
 

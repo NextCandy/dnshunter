@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/domains")({
-  head: () => ({ meta: [{ title: "域名列表 · DomainOps" }] }),
+  head: () => ({ meta: [{ title: "域名列表 · dshunter" }] }),
   component: DomainsPage,
 });
 
