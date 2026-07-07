@@ -10,6 +10,13 @@ import {
   previewDeleteRecords,
   saveDnsRecord,
 } from "@/lib/cloudflare.functions";
+import {
+  deleteDnsTemplate,
+  listDnsTemplates,
+  saveDnsTemplate,
+  type DnsTemplate,
+  type DnsTemplateRecord,
+} from "@/lib/dns-templates.functions";
 import { useDomains } from "@/lib/domain-store";
 import {
   CF_TYPES,
@@ -53,11 +60,13 @@ import {
   Download,
   FileWarning,
   KeyRound,
+  Library,
   Link2,
   Loader2,
   Pencil,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Settings,
   ShieldAlert,
@@ -69,8 +78,32 @@ export const Route = createFileRoute("/_app/records")({
   component: RecordsPage,
 });
 
-type RecTpl = { type: string; name: string; content: string; ttl: number; proxied: boolean; priority?: number };
+type RecTpl = {
+  type: string;
+  name: string;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  priority?: number;
+};
 type DnsForm = RecTpl & { id?: string };
+type BulkAddRecord = RecTpl & { domain: string; content: string };
+type ResultRow = {
+  domain: string;
+  type: string;
+  name: string;
+  content?: string;
+  status: string;
+  error?: string;
+};
+type DeleteMatch = {
+  domain: string;
+  zoneId: string;
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+};
 type DnsRecord = {
   id: string;
   zoneId: string;
@@ -85,6 +118,11 @@ type DnsRecord = {
 };
 
 const EMPTY_FORM: DnsForm = { type: "A", name: "@", content: "", ttl: 1, proxied: true };
+const EMPTY_TEMPLATE_ROW: RecTpl = { type: "A", name: "@", content: "", ttl: 1, proxied: true };
+
+function errorMessage(error: unknown, fallback = "操作失败") {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function RecordsPage() {
   const domains = useDomains();
@@ -107,8 +145,12 @@ function RecordsPage() {
       <Tabs defaultValue="single" className="xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
         <TabsList className="shrink-0">
           <TabsTrigger value="single">单域名 DNS</TabsTrigger>
-          <TabsTrigger value="add" disabled={domains.length === 0}>批量添加</TabsTrigger>
-          <TabsTrigger value="delete" disabled={domains.length === 0}>批量删除</TabsTrigger>
+          <TabsTrigger value="add" disabled={domains.length === 0}>
+            批量添加
+          </TabsTrigger>
+          <TabsTrigger value="delete" disabled={domains.length === 0}>
+            批量删除
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="single" className="xl:min-h-0 xl:flex-1">
           <SingleDomainTab domains={domains} />
@@ -140,7 +182,11 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
   }, [domain, domains]);
 
   const knownDomainSelected = domains.includes(domain);
-  const domainSelectValue = knownDomainSelected ? domain : domain ? "__manual-current" : "__manual-empty";
+  const domainSelectValue = knownDomainSelected
+    ? domain
+    : domain
+      ? "__manual-current"
+      : "__manual-empty";
 
   const q = useQuery({
     queryKey: ["dns-records", domain],
@@ -151,14 +197,18 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
   // listDnsRecords 返回联合类型：ok:false 时带错误分类（no-token/token-invalid/forbidden/no-zone/api）
   const listError = q.data && !q.data.ok ? q.data : null;
   const zone = q.data?.ok ? q.data.zone : null;
-  const records = (q.data?.ok ? q.data.records : []) as DnsRecord[];
+  const records = useMemo(() => (q.data?.ok ? (q.data.records as DnsRecord[]) : []), [q.data]);
 
   const filtered = useMemo(() => {
     const text = query.trim().toLowerCase();
     return records.filter((r) => {
       if (typeFilter !== "all" && r.type !== typeFilter) return false;
       if (!text) return true;
-      return [r.name, r.content, r.type].some((v) => String(v ?? "").toLowerCase().includes(text));
+      return [r.name, r.content, r.type].some((v) =>
+        String(v ?? "")
+          .toLowerCase()
+          .includes(text),
+      );
     });
   }, [records, query, typeFilter]);
 
@@ -188,25 +238,28 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
       if (!domain) throw new Error("请先选择或输入域名");
       if (!form.content.trim()) throw new Error("content 不能为空");
       if (formError) throw new Error(formError);
-      return saveFn({ data: { domain, ...form, content: form.content.trim(), name: form.name.trim() || "@" } });
+      return saveFn({
+        data: { domain, ...form, content: form.content.trim(), name: form.name.trim() || "@" },
+      });
     },
     onSuccess: async () => {
       toast.success(form.id ? "DNS 记录已更新" : "DNS 记录已创建");
       setForm(EMPTY_FORM);
       await q.refetch();
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(errorMessage(e, "保存 DNS 记录失败")),
   });
 
   const remove = useMutation({
-    mutationFn: (record: DnsRecord) => deleteFn({ data: { domain, id: record.id, zoneId: record.zoneId } }),
+    mutationFn: (record: DnsRecord) =>
+      deleteFn({ data: { domain, id: record.id, zoneId: record.zoneId } }),
     onSuccess: async () => {
       toast.success("DNS 记录已删除");
       setPendingDelete(null);
       await q.refetch();
     },
-    onError: (e: any) => {
-      toast.error(e.message);
+    onError: (e: unknown) => {
+      toast.error(errorMessage(e, "删除 DNS 记录失败"));
       setPendingDelete(null);
     },
   });
@@ -237,11 +290,15 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
                 <SelectValue placeholder="选择工作集中的域名" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={domain && !knownDomainSelected ? "__manual-current" : "__manual-empty"}>
+                <SelectItem
+                  value={domain && !knownDomainSelected ? "__manual-current" : "__manual-empty"}
+                >
                   {domain && !knownDomainSelected ? `手动：${domain}` : "手动输入域名"}
                 </SelectItem>
                 {domains.map((d) => (
-                  <SelectItem key={d} value={d}>{d}</SelectItem>
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -258,7 +315,9 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
               placeholder="或输入 example.com"
               className="font-mono"
             />
-            <Button variant="outline" onClick={applyManualDomain}>载入</Button>
+            <Button variant="outline" onClick={applyManualDomain}>
+              载入
+            </Button>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             这里管理的是 Cloudflare Zone 的 DNS 记录；域名需要已经接入 Cloudflare。
@@ -280,13 +339,21 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
               <Select
                 value={form.type}
                 onValueChange={(v) =>
-                  setForm((s) => ({ ...s, type: v, proxied: ["A", "AAAA", "CNAME"].includes(v) ? s.proxied : false }))
+                  setForm((s) => ({
+                    ...s,
+                    type: v,
+                    proxied: ["A", "AAAA", "CNAME"].includes(v) ? s.proxied : false,
+                  }))
                 }
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {CF_TYPES.map((x) => (
-                    <SelectItem key={x} value={x}>{x}</SelectItem>
+                    <SelectItem key={x} value={x}>
+                      {x}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -324,7 +391,10 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
                   type="number"
                   value={form.priority ?? ""}
                   onChange={(e) =>
-                    setForm((s) => ({ ...s, priority: e.target.value === "" ? undefined : Number(e.target.value) }))
+                    setForm((s) => ({
+                      ...s,
+                      priority: e.target.value === "" ? undefined : Number(e.target.value),
+                    }))
                   }
                   placeholder="MX"
                 />
@@ -348,7 +418,11 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
               onClick={() => save.mutate()}
               disabled={save.isPending || !domain || !form.content.trim() || Boolean(formError)}
             >
-              {save.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
+              {save.isPending ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 size-4" />
+              )}
               {form.id ? "保存修改" : "新增 DNS 记录"}
             </Button>
           </div>
@@ -377,7 +451,9 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
               <div className="mt-1 flex flex-wrap gap-1">
                 <Badge variant="secondary">{records.length} 条记录</Badge>
                 {stats.map(([type, count]) => (
-                  <Badge key={type} variant="outline">{type} {count}</Badge>
+                  <Badge key={type} variant="outline">
+                    {type} {count}
+                  </Badge>
                 ))}
               </div>
               {zone && zone.name_servers?.length > 0 && (
@@ -387,8 +463,17 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => q.refetch()} disabled={!domain || q.isFetching}>
-                {q.isFetching ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <RefreshCw className="mr-1 size-3.5" />}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => q.refetch()}
+                disabled={!domain || q.isFetching}
+              >
+                {q.isFetching ? (
+                  <Loader2 className="mr-1 size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1 size-3.5" />
+                )}
                 刷新
               </Button>
               {records.length > 0 && (
@@ -398,7 +483,17 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
                   onClick={() =>
                     downloadBlob(
                       `${domain}-dns-records.csv`,
-                      toCsv(records.map((r) => ({ domain, type: r.type, name: r.name, content: r.content, ttl: r.ttl, proxied: Boolean(r.proxied), priority: r.priority }))),
+                      toCsv(
+                        records.map((r) => ({
+                          domain,
+                          type: r.type,
+                          name: r.name,
+                          content: r.content,
+                          ttl: r.ttl,
+                          proxied: Boolean(r.proxied),
+                          priority: r.priority,
+                        })),
+                      ),
                       "text/csv",
                     )
                   }
@@ -412,13 +507,24 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
           <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-[1fr_160px]">
             <label className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索 name / content" className="pl-9" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索 name / content"
+                className="pl-9"
+              />
             </label>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger><SelectValue placeholder="类型" /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="类型" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部类型</SelectItem>
-                {CF_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                {CF_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -462,7 +568,13 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
                     <td className="p-3 font-mono text-xs">{r.name}</td>
                     <td className="max-w-md truncate p-3 font-mono text-xs">{r.content}</td>
                     <td className="p-3 font-mono text-xs">{r.ttl === 1 ? "Auto" : r.ttl}</td>
-                    <td className="p-3 text-xs">{["A", "AAAA", "CNAME"].includes(r.type) ? (r.proxied ? "开启" : "关闭") : "—"}</td>
+                    <td className="p-3 text-xs">
+                      {["A", "AAAA", "CNAME"].includes(r.type)
+                        ? r.proxied
+                          ? "开启"
+                          : "关闭"
+                        : "—"}
+                    </td>
                     <td className="p-3">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -513,7 +625,10 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
         )}
       </Card>
 
-      <AlertDialog open={Boolean(pendingDelete)} onOpenChange={(open) => !open && setPendingDelete(null)}>
+      <AlertDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除 DNS 记录？</AlertDialogTitle>
@@ -521,8 +636,13 @@ function SingleDomainTab({ domains }: { domains: string[] }) {
               <div>
                 {pendingDelete && (
                   <div className="rounded-md border bg-muted/40 p-3 font-mono text-xs">
-                    <div>{pendingDelete.type} {pendingDelete.name === "@" ? domain : `${pendingDelete.name}.${domain}`}</div>
-                    <div className="mt-1 break-all text-muted-foreground">{pendingDelete.content}</div>
+                    <div>
+                      {pendingDelete.type}{" "}
+                      {pendingDelete.name === "@" ? domain : `${pendingDelete.name}.${domain}`}
+                    </div>
+                    <div className="mt-1 break-all text-muted-foreground">
+                      {pendingDelete.content}
+                    </div>
                   </div>
                 )}
                 <p className="mt-2 text-sm">删除后立即生效且不可恢复。</p>
@@ -556,15 +676,23 @@ function DnsLoadError({
   domain: string;
 }) {
   const icon =
-    kind === "no-zone" ? <Link2 className="size-4" /> :
-    kind === "forbidden" || kind === "token-invalid" || kind === "no-token" ? <KeyRound className="size-4" /> :
-    <ShieldAlert className="size-4" />;
+    kind === "no-zone" ? (
+      <Link2 className="size-4" />
+    ) : kind === "forbidden" || kind === "token-invalid" || kind === "no-token" ? (
+      <KeyRound className="size-4" />
+    ) : (
+      <ShieldAlert className="size-4" />
+    );
   const title =
-    kind === "no-zone" ? "该域名尚未接入 Cloudflare" :
-    kind === "no-token" ? "Cloudflare Token 未配置" :
-    kind === "token-invalid" ? "Cloudflare Token 无效" :
-    kind === "forbidden" ? "Cloudflare Token 权限不足" :
-    "无法载入 DNS 记录";
+    kind === "no-zone"
+      ? "该域名尚未接入 Cloudflare"
+      : kind === "no-token"
+        ? "Cloudflare Token 未配置"
+        : kind === "token-invalid"
+          ? "Cloudflare Token 无效"
+          : kind === "forbidden"
+            ? "Cloudflare Token 权限不足"
+            : "无法载入 DNS 记录";
   return (
     <div className="p-8">
       <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
@@ -596,7 +724,9 @@ function DnsLoadError({
         )}
         {kind === "forbidden" && (
           <div className="mt-3 rounded-md border bg-background p-3 text-xs">
-            <div className="mb-1 font-medium">Token 需要以下权限（在 Cloudflare Dashboard → API Tokens 编辑）：</div>
+            <div className="mb-1 font-medium">
+              Token 需要以下权限（在 Cloudflare Dashboard → API Tokens 编辑）：
+            </div>
             <ul className="list-inside list-disc space-y-0.5 font-mono">
               <li>Zone → DNS → Read（读取记录）</li>
               <li>Zone → DNS → Edit（新增 / 修改 / 删除记录）</li>
@@ -614,29 +744,32 @@ function DnsLoadError({
 
 function AddTab({ domains }: { domains: string[] }) {
   const addFn = useServerFn(bulkAddRecords);
+  const listTemplateFn = useServerFn(listDnsTemplates);
+  const saveTemplateFn = useServerFn(saveDnsTemplate);
+  const deleteTemplateFn = useServerFn(deleteDnsTemplate);
   const [mode, setMode] = useState<"template" | "csv">("template");
   const [upsert, setUpsert] = useState(true);
-  const [tpls, setTpls] = useState<RecTpl[]>([
-    { type: "A", name: "@", content: "", ttl: 1, proxied: true },
-  ]);
+  const [tpls, setTpls] = useState<RecTpl[]>([EMPTY_TEMPLATE_ROW]);
   const [csv, setCsv] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("__none");
+  const [templateName, setTemplateName] = useState("");
+  const [templateDesc, setTemplateDesc] = useState("");
+
+  const templatesQuery = useQuery({
+    queryKey: ["dns-templates"],
+    queryFn: () => listTemplateFn(),
+  });
+  const templates = templatesQuery.data?.rows ?? [];
+  const selectedTemplate = templates.find((tpl) => tpl.id === selectedTemplateId);
 
   const parsed = useMemo(() => (mode === "csv" ? parseAndValidateCsv(csv) : null), [mode, csv]);
 
   const exec = useMutation({
     mutationFn: async () => {
-      let records: any[] = [];
+      let records: BulkAddRecord[] = [];
       if (mode === "template") {
         // 模板行先做与 CSV 相同的内容校验，避免整批打到 API 才报错
-        for (let i = 0; i < tpls.length; i++) {
-          const t = tpls[i];
-          if (!t.content.trim()) continue;
-          const err = validateContent(t.type, t.content.trim());
-          if (err) throw new Error(`模板第 ${i + 1} 行：${err}`);
-          if (t.type === "MX" && (t.priority === undefined || Number.isNaN(t.priority))) {
-            throw new Error(`模板第 ${i + 1} 行：MX 记录必须填写 priority`);
-          }
-        }
+        validateTemplateRows(tpls);
         for (const d of domains) {
           for (const t of tpls) {
             if (!t.content.trim()) continue;
@@ -650,7 +783,7 @@ function AddTab({ domains }: { domains: string[] }) {
       if (records.length === 0) throw new Error("没有可执行的记录");
       return addFn({ data: { records, upsert } });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(errorMessage(e, "批量添加失败")),
     onSuccess: (r) => {
       const n = (s: string) => r.results.filter((x) => x.status === s).length;
       const failed = n("error") + n("no-zone");
@@ -660,6 +793,46 @@ function AddTab({ domains }: { domains: string[] }) {
     },
   });
 
+  const saveTemplate = useMutation({
+    mutationFn: async () => {
+      const records = getCompleteTemplateRows(tpls);
+      validateTemplateRows(records);
+      const name = templateName.trim();
+      if (!name) throw new Error("请填写模板名称");
+      return saveTemplateFn({
+        data: {
+          id: selectedTemplateId === "__none" ? undefined : selectedTemplateId,
+          name,
+          description: templateDesc,
+          records,
+        },
+      });
+    },
+    onSuccess: async (r) => {
+      toast.success("DNS 模板已保存");
+      setSelectedTemplateId(r.row.id);
+      setTemplateName(r.row.name);
+      setTemplateDesc(r.row.description ?? "");
+      await templatesQuery.refetch();
+    },
+    onError: (e: unknown) => toast.error(errorMessage(e, "保存模板失败")),
+  });
+
+  const removeTemplate = useMutation({
+    mutationFn: async () => {
+      if (selectedTemplateId === "__none") throw new Error("请先选择模板");
+      return deleteTemplateFn({ data: { id: selectedTemplateId } });
+    },
+    onSuccess: async () => {
+      toast.success("DNS 模板已删除");
+      setSelectedTemplateId("__none");
+      setTemplateName("");
+      setTemplateDesc("");
+      await templatesQuery.refetch();
+    },
+    onError: (e: unknown) => toast.error(errorMessage(e, "删除模板失败")),
+  });
+
   const csvValidCount = parsed?.valid.length ?? 0;
   const csvErrorCount = parsed?.errors.length ?? 0;
   const canExecute =
@@ -667,10 +840,137 @@ function AddTab({ domains }: { domains: string[] }) {
 
   return (
     <div className="space-y-4">
+      {mode === "template" && (
+        <Card className="p-4">
+          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2 font-semibold">
+                <Library className="size-4 text-primary" />
+                DNS 模板库
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                保存常用解析组合，后续可一键套用到当前批量添加表单。
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => templatesQuery.refetch()}
+              disabled={templatesQuery.isFetching}
+            >
+              {templatesQuery.isFetching ? (
+                <Loader2 className="mr-1 size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 size-4" />
+              )}
+              刷新模板
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[220px_1fr_1fr_auto] lg:items-center">
+            <Select
+              value={selectedTemplateId}
+              onValueChange={(value) => {
+                setSelectedTemplateId(value);
+                if (value === "__none") {
+                  setTemplateName("");
+                  setTemplateDesc("");
+                  return;
+                }
+                const tpl = templates.find((item) => item.id === value);
+                if (tpl) {
+                  setTemplateName(tpl.name);
+                  setTemplateDesc(tpl.description ?? "");
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择模板" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">新建模板</SelectItem>
+                {templates.map((tpl) => (
+                  <SelectItem key={tpl.id} value={tpl.id}>
+                    {tpl.name}（{tpl.records.length}）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={templateName}
+              onChange={(event) => setTemplateName(event.target.value)}
+              placeholder="模板名称，例如：基础官网解析"
+            />
+            <Input
+              value={templateDesc}
+              onChange={(event) => setTemplateDesc(event.target.value)}
+              placeholder="说明（可选）"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!selectedTemplate}
+                onClick={() => {
+                  if (!selectedTemplate) return;
+                  setTpls(templateToRows(selectedTemplate));
+                  toast.success(`已套用模板：${selectedTemplate.name}`);
+                }}
+              >
+                套用
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedTemplateId("__none");
+                  setTemplateName("");
+                  setTemplateDesc("");
+                }}
+              >
+                新建
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => saveTemplate.mutate()}
+                disabled={saveTemplate.isPending}
+              >
+                {saveTemplate.isPending ? (
+                  <Loader2 className="mr-1 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1 size-4" />
+                )}
+                保存
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeTemplate.mutate()}
+                disabled={!selectedTemplate || removeTemplate.isPending}
+              >
+                <Trash2 className="mr-1 size-4" />
+                删除
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Card className="p-4">
         <div className="mb-3 flex flex-wrap gap-2">
-          <Button variant={mode === "template" ? "default" : "outline"} size="sm" onClick={() => setMode("template")}>模板模式</Button>
-          <Button variant={mode === "csv" ? "default" : "outline"} size="sm" onClick={() => setMode("csv")}>CSV 导入</Button>
+          <Button
+            variant={mode === "template" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMode("template")}
+          >
+            模板模式
+          </Button>
+          <Button
+            variant={mode === "csv" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMode("csv")}
+          >
+            CSV 导入
+          </Button>
           <label className="ml-auto flex items-center gap-2 text-sm">
             <Checkbox checked={upsert} onCheckedChange={(v) => setUpsert(Boolean(v))} />
             存在则更新（upsert）
@@ -680,47 +980,102 @@ function AddTab({ domains }: { domains: string[] }) {
         {mode === "template" ? (
           <div className="space-y-2">
             {tpls.map((t, i) => (
-              <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-[100px_1fr_2fr_80px_100px_40px] md:items-center">
+              <div
+                key={i}
+                className="grid grid-cols-1 gap-2 md:grid-cols-[100px_1fr_2fr_80px_100px_40px] md:items-center"
+              >
                 <Select value={t.type} onValueChange={(v) => update(i, { type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {CF_TYPES.map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                    {CF_TYPES.map((x) => (
+                      <SelectItem key={x} value={x}>
+                        {x}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                <Input placeholder="name (@ 或子域)" value={t.name} onChange={(e) => update(i, { name: e.target.value })} />
-                <Input placeholder="content" value={t.content} onChange={(e) => update(i, { content: e.target.value })} />
-                <Input type="number" value={t.ttl} onChange={(e) => update(i, { ttl: Number(e.target.value) })} />
+                <Input
+                  placeholder="name (@ 或子域)"
+                  value={t.name}
+                  onChange={(e) => update(i, { name: e.target.value })}
+                />
+                <Input
+                  placeholder="content"
+                  value={t.content}
+                  onChange={(e) => update(i, { content: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  value={t.ttl}
+                  onChange={(e) => update(i, { ttl: Number(e.target.value) })}
+                />
                 <label className="flex items-center gap-1 text-xs">
-                  <Checkbox checked={t.proxied} disabled={!["A", "AAAA", "CNAME"].includes(t.type)} onCheckedChange={(v) => update(i, { proxied: Boolean(v) })} />
+                  <Checkbox
+                    checked={t.proxied}
+                    disabled={!["A", "AAAA", "CNAME"].includes(t.type)}
+                    onCheckedChange={(v) => update(i, { proxied: Boolean(v) })}
+                  />
                   proxied
                 </label>
-                <Button variant="ghost" size="icon" onClick={() => setTpls(tpls.filter((_, j) => j !== i))}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setTpls(tpls.filter((_, j) => j !== i))}
+                >
                   <Trash2 className="size-4" />
                 </Button>
               </div>
             ))}
-            <Button variant="outline" size="sm" onClick={() => setTpls([...tpls, { type: "A", name: "@", content: "", ttl: 1, proxied: true }])}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTpls([...tpls, EMPTY_TEMPLATE_ROW])}
+            >
               <Plus className="mr-1 size-4" /> 添加一条
             </Button>
-            <p className="text-xs text-muted-foreground">模板将应用到全部 {domains.length} 个域名。TTL=1 表示 Auto。</p>
+            <p className="text-xs text-muted-foreground">
+              模板将应用到全部 {domains.length} 个域名。TTL=1 表示 Auto。
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => downloadBlob("records-template.csv", CSV_TEMPLATE, "text/csv")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadBlob("records-template.csv", CSV_TEMPLATE, "text/csv")}
+              >
                 <Download className="mr-1 size-4" /> 下载 CSV 模板
               </Button>
               <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent">
                 上传 CSV
-                <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) setCsv(await f.text());
-                  e.target.value = "";
-                }} />
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) setCsv(await f.text());
+                    e.target.value = "";
+                  }}
+                />
               </label>
             </div>
-            <Textarea rows={10} className="font-mono text-xs" placeholder={"domain,type,name,content,ttl,proxied,priority\nexample.com,A,@,1.2.3.4,1,true,"} value={csv} onChange={(e) => setCsv(e.target.value)} />
-            <p className="text-xs text-muted-foreground">必填列：domain, type, name, content。可选：ttl（1=auto）、proxied、priority（MX 必填）。</p>
+            <Textarea
+              rows={10}
+              className="font-mono text-xs"
+              placeholder={
+                "domain,type,name,content,ttl,proxied,priority\nexample.com,A,@,1.2.3.4,1,true,"
+              }
+              value={csv}
+              onChange={(e) => setCsv(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              必填列：domain, type, name, content。可选：ttl（1=auto）、proxied、priority（MX
+              必填）。
+            </p>
             {parsed && csv.trim() && <CsvReport parsed={parsed} />}
           </div>
         )}
@@ -739,15 +1094,72 @@ function AddTab({ domains }: { domains: string[] }) {
   }
 }
 
-function CsvReport({ parsed }: { parsed: { valid: ValidatedRecord[]; errors: CsvError[]; totalRows: number } }) {
+function getCompleteTemplateRows(rows: RecTpl[]): DnsTemplateRecord[] {
+  return rows
+    .filter((row) => row.content.trim())
+    .map((row) => ({
+      type: row.type,
+      name: row.name.trim() || "@",
+      content: row.content.trim(),
+      ttl: row.ttl,
+      proxied: ["A", "AAAA", "CNAME"].includes(row.type) ? Boolean(row.proxied) : false,
+      priority: row.priority,
+    }));
+}
+
+function validateTemplateRows(rows: RecTpl[]) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const content = row.content.trim();
+    if (!content) continue;
+    const err = validateContent(row.type, content);
+    if (err) throw new Error(`模板第 ${i + 1} 行：${err}`);
+    if (!(row.ttl === 1 || (row.ttl >= 60 && row.ttl <= 86400))) {
+      throw new Error(`模板第 ${i + 1} 行：TTL 必须为 1（Auto）或 60-86400 秒`);
+    }
+    if (row.type === "MX" && (row.priority === undefined || Number.isNaN(row.priority))) {
+      throw new Error(`模板第 ${i + 1} 行：MX 记录必须填写 priority`);
+    }
+    if (
+      row.priority !== undefined &&
+      (!Number.isInteger(row.priority) || row.priority < 0 || row.priority > 65535)
+    ) {
+      throw new Error(`模板第 ${i + 1} 行：priority 必须为 0-65535`);
+    }
+  }
+}
+
+function templateToRows(template: DnsTemplate): RecTpl[] {
+  return template.records.map((record) => ({
+    type: record.type,
+    name: record.name,
+    content: record.content,
+    ttl: record.ttl,
+    proxied: record.proxied,
+    priority: record.priority,
+  }));
+}
+
+function CsvReport({
+  parsed,
+}: {
+  parsed: { valid: ValidatedRecord[]; errors: CsvError[]; totalRows: number };
+}) {
   const hasErr = parsed.errors.length > 0;
   return (
-    <Card className={`p-3 border ${hasErr ? "border-destructive/50 bg-destructive/5" : "border-success/40 bg-success/5"}`}>
+    <Card
+      className={`p-3 border ${hasErr ? "border-destructive/50 bg-destructive/5" : "border-success/40 bg-success/5"}`}
+    >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm">
-          {hasErr ? <FileWarning className="size-4 text-destructive" /> : <CheckCircle2 className="size-4 text-success" />}
+          {hasErr ? (
+            <FileWarning className="size-4 text-destructive" />
+          ) : (
+            <CheckCircle2 className="size-4 text-success" />
+          )}
           <span>
-            共 {parsed.totalRows} 行 · <span className="text-success">{parsed.valid.length} 通过</span>
+            共 {parsed.totalRows} 行 ·{" "}
+            <span className="text-success">{parsed.valid.length} 通过</span>
             {hasErr && <span className="ml-1 text-destructive">· {parsed.errors.length} 错误</span>}
           </span>
         </div>
@@ -758,7 +1170,10 @@ function CsvReport({ parsed }: { parsed: { valid: ValidatedRecord[]; errors: Csv
             onClick={() =>
               downloadBlob(
                 "csv-errors.csv",
-                "row,field,message\n" + parsed.errors.map((e) => `${e.row},${e.field},"${e.message.replace(/"/g, '""')}"`).join("\n"),
+                "row,field,message\n" +
+                  parsed.errors
+                    .map((e) => `${e.row},${e.field},"${e.message.replace(/"/g, '""')}"`)
+                    .join("\n"),
                 "text/csv",
               )
             }
@@ -799,7 +1214,7 @@ function DeleteTab({ domains }: { domains: string[] }) {
   const [type, setType] = useState<string>("");
   const [nameContains, setNameContains] = useState("");
   const [contentContains, setContentContains] = useState("");
-  const [matches, setMatches] = useState<any[]>([]);
+  const [matches, setMatches] = useState<DeleteMatch[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -820,7 +1235,7 @@ function DeleteTab({ domains }: { domains: string[] }) {
       setSelected(new Set(r.matches.map((m) => m.id)));
       toast.success(`匹配到 ${r.matches.length} 条`);
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(errorMessage(e, "预览匹配记录失败")),
   });
 
   const exec = useMutation({
@@ -840,9 +1255,9 @@ function DeleteTab({ domains }: { domains: string[] }) {
       setMatches([]);
       setSelected(new Set());
     },
-    onError: (e: any) => {
+    onError: (e: unknown) => {
       setConfirmOpen(false);
-      toast.error(e.message);
+      toast.error(errorMessage(e, "批量删除失败"));
     },
   });
 
@@ -852,10 +1267,16 @@ function DeleteTab({ domains }: { domains: string[] }) {
         <div>
           <div className="mb-1 text-sm">类型（可选）</div>
           <Select value={type || "__all"} onValueChange={(v) => setType(v === "__all" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder="任意类型" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="任意类型" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all">任意类型</SelectItem>
-              {CF_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              {CF_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -879,7 +1300,16 @@ function DeleteTab({ domains }: { domains: string[] }) {
             onClick={() =>
               downloadBlob(
                 "matched-records.csv",
-                toCsv(matches.map((m) => ({ domain: m.domain, type: m.type, name: m.name, content: m.content, ttl: 1, proxied: false }))),
+                toCsv(
+                  matches.map((m) => ({
+                    domain: m.domain,
+                    type: m.type,
+                    name: m.name,
+                    content: m.content,
+                    ttl: 1,
+                    proxied: false,
+                  })),
+                ),
                 "text/csv",
               )
             }
@@ -896,8 +1326,16 @@ function DeleteTab({ domains }: { domains: string[] }) {
               匹配 {matches.length} 条，已选 <Badge>{selected.size}</Badge>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSelected(new Set(matches.map((m) => m.id)))}>全选</Button>
-              <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>清空</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelected(new Set(matches.map((m) => m.id)))}
+              >
+                全选
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>
+                清空
+              </Button>
               <Button
                 variant="destructive"
                 size="sm"
@@ -923,12 +1361,15 @@ function DeleteTab({ domains }: { domains: string[] }) {
                 {matches.map((m) => (
                   <tr key={m.id} className="border-t">
                     <td className="p-2">
-                      <Checkbox checked={selected.has(m.id)} onCheckedChange={() => {
-                        const n = new Set(selected);
-                        if (n.has(m.id)) n.delete(m.id);
-                        else n.add(m.id);
-                        setSelected(n);
-                      }} />
+                      <Checkbox
+                        checked={selected.has(m.id)}
+                        onCheckedChange={() => {
+                          const n = new Set(selected);
+                          if (n.has(m.id)) n.delete(m.id);
+                          else n.add(m.id);
+                          setSelected(n);
+                        }}
+                      />
                     </td>
                     <td className="p-2 font-mono">{m.domain}</td>
                     <td className="p-2">{typeBadge(m.type)}</td>
@@ -978,17 +1419,24 @@ const RESULT_STATUS_LABEL: Record<string, { text: string; ok: boolean | null }> 
   error: { text: "失败", ok: false },
 };
 
-function ResultTable({ results, kind }: { results: any[]; kind: "add" | "delete" }) {
+function ResultTable({ results, kind }: { results: ResultRow[]; kind: "add" | "delete" }) {
   const okCount = results.filter((r) => RESULT_STATUS_LABEL[r.status]?.ok === true).length;
   const skipCount = results.filter((r) => r.status === "skipped").length;
   const failCount = results.length - okCount - skipCount;
   const exportResults = () => {
-    const esc = (v: any) => {
+    const esc = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const rows = results.map((r) =>
-      [esc(r.domain), esc(r.type), esc(r.name), esc(r.content ?? ""), esc(r.status), esc(r.error ?? "")].join(","),
+      [
+        esc(r.domain),
+        esc(r.type),
+        esc(r.name),
+        esc(r.content ?? ""),
+        esc(r.status),
+        esc(r.error ?? ""),
+      ].join(","),
     );
     downloadBlob(
       `bulk-${kind}-results.csv`,
@@ -1001,7 +1449,9 @@ function ResultTable({ results, kind }: { results: any[]; kind: "add" | "delete"
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">结果（{results.length}）</span>
-          <Badge className="bg-success text-success-foreground hover:bg-success">{okCount} 成功</Badge>
+          <Badge className="bg-success text-success-foreground hover:bg-success">
+            {okCount} 成功
+          </Badge>
           {skipCount > 0 && <Badge variant="secondary">{skipCount} 跳过</Badge>}
           {failCount > 0 && <Badge variant="destructive">{failCount} 失败</Badge>}
         </div>
@@ -1030,9 +1480,19 @@ function ResultTable({ results, kind }: { results: any[]; kind: "add" | "delete"
                   <td className="p-2 font-mono">{r.domain}</td>
                   <td className="p-2">{typeBadge(r.type)}</td>
                   <td className="p-2 font-mono text-xs">{r.name}</td>
-                  {kind === "add" && <td className="max-w-xs truncate p-2 font-mono text-xs">{r.content}</td>}
+                  {kind === "add" && (
+                    <td className="max-w-xs truncate p-2 font-mono text-xs">{r.content}</td>
+                  )}
                   <td className="p-2">
-                    <span className={s.ok === true ? "text-success" : s.ok === false ? "text-destructive" : "text-muted-foreground"}>
+                    <span
+                      className={
+                        s.ok === true
+                          ? "text-success"
+                          : s.ok === false
+                            ? "text-destructive"
+                            : "text-muted-foreground"
+                      }
+                    >
                       {s.text}
                     </span>
                   </td>
