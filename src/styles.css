@@ -34,8 +34,10 @@
   --radius-4xl: calc(var(--radius) + 16px);
 
   --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-display: "Space Grotesk Variable", "Space Grotesk", "Inter", "Noto Sans SC", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  --font-display:
+    "Space Grotesk Variable", "Space Grotesk", "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -80,35 +82,36 @@
   --radius: 0.5rem;
 
   /* 冷蓝图白：极淡靛调，像晨雾中的图纸 */
-  --background: oklch(0.985 0.008 258);
-  --foreground: oklch(0.205 0.03 265);
-  --card: oklch(1 0 0);
+  --background: #f6f8fc;
+  --foreground: #111827;
+  --card: #ffffff;
   --card-foreground: oklch(0.205 0.03 265);
-  --popover: oklch(1 0 0);
+  --popover: #ffffff;
   --popover-foreground: oklch(0.205 0.03 265);
 
   /* 靛蓝主色 */
-  --primary: oklch(0.515 0.204 266);
-  --primary-foreground: oklch(0.985 0.01 264);
+  --primary: #3b82f6;
+  --primary-foreground: #f8fafc;
 
   --secondary: oklch(0.955 0.013 258);
-  --secondary-foreground: oklch(0.30 0.045 265);
+  --secondary-foreground: oklch(0.3 0.045 265);
   --muted: oklch(0.962 0.011 258);
   --muted-foreground: oklch(0.505 0.032 259);
   --accent: oklch(0.935 0.022 262);
   --accent-foreground: oklch(0.31 0.055 266);
 
   /* 信号色 */
-  --destructive: oklch(0.585 0.218 18);
-  --destructive-foreground: oklch(0.985 0.008 18);
-  --success: oklch(0.62 0.132 166);
-  --success-foreground: oklch(0.99 0.01 166);
-  --warning: oklch(0.71 0.152 76);
-  --warning-foreground: oklch(0.28 0.05 76);
+  --destructive: #ef4444;
+  --destructive-foreground: #fff7f7;
+  --success: #22c55e;
+  --success-foreground: #052e16;
+  --warning: #f59e0b;
+  --warning-foreground: #422006;
 
   --border: oklch(0.905 0.015 258);
   --input: oklch(0.905 0.015 258);
-  --ring: oklch(0.515 0.204 266);
+  --ring: #3b82f6;
+  --surface-hover: #eef4ff;
 
   /* 蓝图网格线（深靛淡线） */
   --grid-line: oklch(0.42 0.08 266 / 0.07);
@@ -131,34 +134,35 @@
 
 .dark {
   /* 深蓝墨夜：带靛蓝的深色，非纯黑 */
-  --background: oklch(0.168 0.022 265);
-  --foreground: oklch(0.96 0.008 258);
-  --card: oklch(0.205 0.026 265);
-  --card-foreground: oklch(0.96 0.008 258);
-  --popover: oklch(0.2 0.025 265);
-  --popover-foreground: oklch(0.96 0.008 258);
+  --background: #0f1117;
+  --foreground: #f5f7fb;
+  --card: #1a1d29;
+  --card-foreground: #f5f7fb;
+  --popover: #1a1d29;
+  --popover-foreground: #f5f7fb;
 
   /* 亮靛蓝主色，在深底上发光 */
-  --primary: oklch(0.655 0.18 265);
-  --primary-foreground: oklch(0.155 0.03 265);
+  --primary: #3b82f6;
+  --primary-foreground: #eff6ff;
 
-  --secondary: oklch(0.27 0.032 265);
-  --secondary-foreground: oklch(0.96 0.008 258);
-  --muted: oklch(0.258 0.03 265);
-  --muted-foreground: oklch(0.705 0.03 260);
-  --accent: oklch(0.3 0.042 265);
-  --accent-foreground: oklch(0.96 0.008 258);
+  --secondary: #252836;
+  --secondary-foreground: #f5f7fb;
+  --muted: #252836;
+  --muted-foreground: rgb(245 247 251 / 65%);
+  --accent: #252836;
+  --accent-foreground: #f5f7fb;
 
-  --destructive: oklch(0.635 0.2 19);
-  --destructive-foreground: oklch(0.985 0.01 19);
-  --success: oklch(0.7 0.145 166);
-  --success-foreground: oklch(0.16 0.03 166);
-  --warning: oklch(0.76 0.152 78);
-  --warning-foreground: oklch(0.2 0.04 78);
+  --destructive: #ef4444;
+  --destructive-foreground: #fff7f7;
+  --success: #22c55e;
+  --success-foreground: #052e16;
+  --warning: #f59e0b;
+  --warning-foreground: #422006;
 
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.655 0.18 265);
+  --ring: #3b82f6;
+  --surface-hover: #252836;
 
   /* 蓝图网格线（浅靛淡线在深底上） */
   --grid-line: oklch(0.78 0.1 265 / 0.06);
@@ -169,12 +173,12 @@
   --chart-4: oklch(0.66 0.2 19);
   --chart-5: oklch(0.66 0.19 300);
 
-  --sidebar: oklch(0.148 0.022 266);
-  --sidebar-foreground: oklch(0.82 0.02 260);
-  --sidebar-primary: oklch(0.655 0.18 265);
-  --sidebar-primary-foreground: oklch(0.155 0.03 265);
-  --sidebar-accent: oklch(0.28 0.04 265);
-  --sidebar-accent-foreground: oklch(0.96 0.008 258);
+  --sidebar: #151824;
+  --sidebar-foreground: rgb(245 247 251 / 78%);
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #eff6ff;
+  --sidebar-accent: #252836;
+  --sidebar-accent-foreground: #f5f7fb;
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.655 0.18 265);
 }
@@ -196,6 +200,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    line-height: 1.6;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
   }
 
   /* 选中文本染上主色 */
@@ -249,7 +259,10 @@
   /* 数字读数：等宽 + 表格数字对齐 */
   .tabular {
     font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1, "cv01" 1, "ss01" 1;
+    font-feature-settings:
+      "tnum" 1,
+      "cv01" 1,
+      "ss01" 1;
   }
 
   /* 发光信号点 —— 域名/DNS 状态的统一语汇 */

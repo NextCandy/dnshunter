@@ -24,10 +24,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
   Clock3,
   Copy,
   ExternalLink,
@@ -35,10 +45,12 @@ import {
   ListChecks,
   Loader2,
   PenLine,
+  PackageCheck,
   ScanSearch,
   Search,
   Server,
   Settings,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { DnsDialog } from "@/components/dns-dialog";
@@ -89,6 +101,8 @@ type Entry = {
   details: Partial<Record<Source, PulledDomain>>;
 };
 type ZoneFilter = "all" | "in-zone" | "not-in-zone";
+type SortKey = "domain" | "ns" | "sources" | "zone";
+type SortDir = "asc" | "desc";
 type PullState = {
   status: "idle" | "loading" | "success" | "error";
   count: number;
@@ -138,9 +152,16 @@ function DomainsPage() {
 
   const [dnsDomain, setDnsDomain] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchPending, setSearchPending] = useState(false);
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [nsFilter, setNsFilter] = useState<NsStatus | "all">("all");
   const [zoneFilter, setZoneFilter] = useState<ZoneFilter>("all");
+  const [tldFilter, setTldFilter] = useState("all");
+  const [pageSize, setPageSize] = useState(100);
+  const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<SortKey>("domain");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [pulled, setPulled] = useState<Record<Source, PulledDomain[]>>({
     manual: [],
     spaceship: [],
@@ -172,6 +193,19 @@ function DomainsPage() {
   useEffect(() => {
     setSelected(new Set(persisted));
   }, [persisted]);
+
+  useEffect(() => {
+    setSearchPending(true);
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query);
+      setSearchPending(false);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, sourceFilter, nsFilter, zoneFilter, tldFilter, pageSize, sortKey, sortDir]);
 
   useEffect(() => {
     const rows = persistedAssets.data?.rows ?? [];
@@ -321,16 +355,55 @@ function DomainsPage() {
   const cfZonePulled = pullState["cloudflare-zone"].status === "success";
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     return merged.filter((e) => {
       if (q && !e.domain.includes(q)) return false;
       if (sourceFilter !== "all" && !e.sources.has(sourceFilter)) return false;
       if (nsFilter !== "all" && e.nsStatus !== nsFilter) return false;
       if (zoneFilter === "in-zone" && !e.details["cloudflare-zone"]) return false;
       if (zoneFilter === "not-in-zone" && e.details["cloudflare-zone"]) return false;
+      if (tldFilter !== "all" && domainTld(e.domain) !== tldFilter) return false;
       return true;
     });
-  }, [merged, query, sourceFilter, nsFilter, zoneFilter]);
+  }, [merged, debouncedQuery, sourceFilter, nsFilter, zoneFilter, tldFilter]);
+
+  const tldCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of merged) {
+      const tld = domainTld(entry.domain);
+      if (!tld) continue;
+      counts.set(tld, (counts.get(tld) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  }, [merged]);
+
+  const sortedVisible = useMemo(() => {
+    const rows = [...visible];
+    rows.sort((a, b) => {
+      const factor = sortDir === "asc" ? 1 : -1;
+      if (sortKey === "sources") return (a.sources.size - b.sources.size) * factor;
+      if (sortKey === "ns") return a.nsStatus.localeCompare(b.nsStatus) * factor;
+      if (sortKey === "zone") {
+        const az = a.details["cloudflare-zone"] ? 1 : 0;
+        const bz = b.details["cloudflare-zone"] ? 1 : 0;
+        return (az - bz) * factor;
+      }
+      return a.domain.localeCompare(b.domain) * factor;
+    });
+    return rows;
+  }, [visible, sortDir, sortKey]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedVisible.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageRows = sortedVisible.slice(pageStart, pageStart + pageSize);
+  const activeFilterCount = [
+    debouncedQuery.trim(),
+    sourceFilter !== "all",
+    nsFilter !== "all",
+    zoneFilter !== "all",
+    tldFilter !== "all",
+  ].filter(Boolean).length;
 
   const sourceCounts = useMemo(() => {
     const counts: Partial<Record<Source, number>> = {};
@@ -363,7 +436,7 @@ function DomainsPage() {
   };
 
   const exportCsv = () => {
-    const rows = visible.map((entry) => [
+    const rows = sortedVisible.map((entry) => [
       entry.domain,
       [...entry.sources].map(sourceLabel).join(" / "),
       entry.nsStatus,
@@ -377,8 +450,17 @@ function DomainsPage() {
     downloadText(`dshunter-domains-${new Date().toISOString().slice(0, 10)}.csv`, `\ufeff${csv}`);
   };
 
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
   return (
-    <div className="flex max-w-7xl flex-col gap-5 xl:h-[calc(100vh-7rem)] xl:min-h-[720px]">
+    <div className="flex max-w-7xl flex-col gap-5 2xl:h-[calc(100vh-7rem)] 2xl:min-h-[720px]">
       <div className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight">域名列表</h1>
@@ -394,14 +476,12 @@ function DomainsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(320px,380px)_1fr]">
-        <div className="space-y-4 xl:min-h-0 xl:overflow-auto xl:pr-1">
+      <div className="grid grid-cols-1 gap-4 2xl:min-h-0 2xl:flex-1 2xl:grid-cols-[minmax(320px,380px)_1fr]">
+        <div className="space-y-4 2xl:min-h-0 2xl:overflow-auto 2xl:pr-1">
           <Card className="flex items-center justify-between gap-3 p-4">
             <div>
               <div className="font-semibold">手动添加的域名？</div>
-              <div className="text-xs text-muted-foreground">
-                手动输入 / CSV 导入已移至独立页面
-              </div>
+              <div className="text-xs text-muted-foreground">手动输入 / CSV 导入已移至独立页面</div>
             </div>
             <Button asChild variant="outline" size="sm">
               <Link to="/manual">
@@ -462,9 +542,7 @@ function DomainsPage() {
                   <div className="mt-1 text-muted-foreground">
                     新增 {job.createdCount} · 更新 {job.updatedCount} · 缺失 {job.missingCount}
                   </div>
-                  <div className="mt-1 text-muted-foreground">
-                    {formatDateTime(job.finishedAt)}
-                  </div>
+                  <div className="mt-1 text-muted-foreground">{formatDateTime(job.finishedAt)}</div>
                 </div>
               ))}
               {(syncJobs.data?.rows ?? []).length === 0 && (
@@ -476,7 +554,7 @@ function DomainsPage() {
           </Card>
         </div>
 
-        <Card className="flex min-h-[560px] flex-col overflow-hidden xl:min-h-0">
+        <Card className="flex min-h-[560px] flex-col overflow-hidden 2xl:min-h-0">
           <div className="shrink-0 border-b bg-muted/30 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -484,8 +562,13 @@ function DomainsPage() {
                   <ListChecks className="size-4" />
                   合并结果
                   <Badge variant="secondary">
-                    {visible.length} / {merged.length}
+                    {sortedVisible.length} / {merged.length}
                   </Badge>
+                  {activeFilterCount > 0 && (
+                    <Badge className="bg-primary/12 text-primary hover:bg-primary/12">
+                      {activeFilterCount} 个筛选
+                    </Badge>
+                  )}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   每个域名可单独进入 DNS 管理；保存选中后仍可用于批量绑定和批量解析。
@@ -495,8 +578,8 @@ function DomainsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSelected(new Set(visible.map((m) => m.domain)))}
-                  disabled={visible.length === 0}
+                  onClick={() => setSelected(new Set(sortedVisible.map((m) => m.domain)))}
+                  disabled={sortedVisible.length === 0}
                 >
                   选择当前结果
                 </Button>
@@ -507,7 +590,7 @@ function DomainsPage() {
                   variant="outline"
                   size="sm"
                   onClick={exportCsv}
-                  disabled={visible.length === 0}
+                  disabled={sortedVisible.length === 0}
                 >
                   导出 CSV
                 </Button>
@@ -516,7 +599,7 @@ function DomainsPage() {
                 </Button>
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-[1fr_190px_170px_170px]">
+            <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-[1fr_190px_170px_170px_140px]">
               <label className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -525,64 +608,158 @@ function DomainsPage() {
                   placeholder="搜索域名"
                   className="pl-9"
                 />
+                {searchPending && (
+                  <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                )}
               </label>
-              <select
+              <Select
                 value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value as Source | "all")}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                onValueChange={(value) => setSourceFilter(value as Source | "all")}
               >
-                <option value="all">全部来源</option>
-                {SOURCE_DEFS.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label} ({sourceCounts[s.id] ?? 0})
-                  </option>
-                ))}
-              </select>
-              <select
+                <SelectTrigger>
+                  <SelectValue placeholder="全部来源" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部来源</SelectItem>
+                  {SOURCE_DEFS.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.label} ({sourceCounts[s.id] ?? 0})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
                 value={nsFilter}
-                onChange={(e) => setNsFilter(e.target.value as NsStatus | "all")}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                onValueChange={(value) => setNsFilter(value as NsStatus | "all")}
               >
-                <option value="all">全部 NS 状态</option>
-                <option value="cloudflare">已指向 Cloudflare</option>
-                <option value="other">未指向 Cloudflare</option>
-                <option value="unknown">NS 未查到</option>
-              </select>
-              <select
+                <SelectTrigger>
+                  <SelectValue placeholder="全部 NS 状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部 NS 状态</SelectItem>
+                  <SelectItem value="cloudflare">已指向 Cloudflare</SelectItem>
+                  <SelectItem value="other">未指向 Cloudflare</SelectItem>
+                  <SelectItem value="unknown">NS 未查到</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
                 value={zoneFilter}
-                onChange={(e) => {
-                  const v = e.target.value as ZoneFilter;
+                onValueChange={(value) => {
+                  const v = value as ZoneFilter;
                   setZoneFilter(v);
                   if (v !== "all" && !cfZonePulled) {
                     toast.info("尚未拉取 Cloudflare Zone，请先在左侧拉取，否则结果可能不准确");
                   }
                 }}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
               >
-                <option value="all">全部 Zone 状态</option>
-                <option value="in-zone">已接入 CF Zone</option>
-                <option value="not-in-zone">未接入 CF Zone</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="全部 Zone 状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部 Zone 状态</SelectItem>
+                  <SelectItem value="in-zone">已接入 CF Zone</SelectItem>
+                  <SelectItem value="not-in-zone">未接入 CF Zone</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => setPageSize(Number(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="每页 100" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="50">每页 50</SelectItem>
+                  <SelectItem value="100">每页 100</SelectItem>
+                  <SelectItem value="200">每页 200</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={chipClass(tldFilter === "all")}
+                onClick={() => setTldFilter("all")}
+              >
+                全部 TLD
+              </button>
+              {tldCounts.map(([tld, count]) => (
+                <button
+                  key={tld}
+                  type="button"
+                  className={chipClass(tldFilter === tld)}
+                  onClick={() => setTldFilter(tld)}
+                >
+                  .{tld} <span className="text-muted-foreground">{count}</span>
+                </button>
+              ))}
+              {activeFilterCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setQuery("");
+                    setSourceFilter("all");
+                    setNsFilter("all");
+                    setZoneFilter("all");
+                    setTldFilter("all");
+                  }}
+                >
+                  清除筛选
+                </Button>
+              )}
             </div>
           </div>
 
-          <div className="min-h-[420px] overflow-auto xl:min-h-0 xl:flex-1">
+          <div className="min-h-[420px] overflow-auto 2xl:min-h-0 2xl:flex-1">
             <TooltipProvider delayDuration={150}>
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]">
+              <table className="min-w-[960px] w-full text-sm">
+                <thead className="sticky top-0 z-20 bg-background shadow-[0_1px_0_var(--color-border)]">
                   <tr>
-                    <th className="w-10 p-3"></th>
-                    <th className="p-3 text-left font-medium text-muted-foreground">域名</th>
-                    <th className="p-3 text-left font-medium text-muted-foreground">当前 NS</th>
-                    <th className="w-28 p-3 text-left font-medium text-muted-foreground">
-                      CF Zone
+                    <th className="sticky left-0 z-30 w-12 bg-background p-3"></th>
+                    <th className="sticky left-12 z-30 w-72 bg-background p-3 text-left font-medium text-muted-foreground">
+                      <SortHeader
+                        label="域名"
+                        sortKey="domain"
+                        activeKey={sortKey}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
                     </th>
-                    <th className="p-3 text-left font-medium text-muted-foreground">来源</th>
-                    <th className="w-40 p-3 text-right font-medium text-muted-foreground">操作</th>
+                    <th className="min-w-80 p-3 text-left font-medium text-muted-foreground">
+                      <SortHeader
+                        label="当前 NS"
+                        sortKey="ns"
+                        activeKey={sortKey}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    </th>
+                    <th className="w-32 p-3 text-left font-medium text-muted-foreground">
+                      <SortHeader
+                        label="CF Zone"
+                        sortKey="zone"
+                        activeKey={sortKey}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    </th>
+                    <th className="min-w-56 p-3 text-left font-medium text-muted-foreground">
+                      <SortHeader
+                        label="来源"
+                        sortKey="sources"
+                        activeKey={sortKey}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    </th>
+                    <th className="sticky right-0 z-30 w-44 bg-background p-3 text-right font-medium text-muted-foreground">
+                      操作
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.length === 0 && (
+                  {sortedVisible.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-10 text-center">
                         <Globe2 className="mx-auto mb-3 size-8 text-muted-foreground" />
@@ -616,6 +793,7 @@ function DomainsPage() {
                                 setSourceFilter("all");
                                 setNsFilter("all");
                                 setZoneFilter("all");
+                                setTldFilter("all");
                               }}
                             >
                               清除全部筛选
@@ -625,17 +803,35 @@ function DomainsPage() {
                       </td>
                     </tr>
                   )}
-                  {visible.map((e) => (
-                    <tr key={e.domain} className="border-t hover:bg-accent/30">
-                      <td className="p-3">
+                  {pageRows.map((e) => (
+                    <tr
+                      key={e.domain}
+                      className="group relative border-t odd:bg-background even:bg-muted/10 hover:bg-accent/40"
+                    >
+                      <td className="sticky left-0 z-10 bg-inherit p-3 before:absolute before:left-0 before:top-0 before:h-full before:w-0.5 before:bg-transparent group-hover:before:bg-primary">
                         <Checkbox
                           checked={selected.has(e.domain)}
                           onCheckedChange={() => toggle(e.domain)}
                           aria-label={`选择 ${e.domain}`}
                         />
                       </td>
-                      <td className="p-3">
-                        <div className="font-mono font-medium">{e.domain}</div>
+                      <td className="sticky left-12 z-10 bg-inherit p-3">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="max-w-64 truncate font-mono font-medium">
+                              {e.domain}
+                            </div>
+                          </TooltipTrigger>
+                          {e.domain.length > 30 && (
+                            <TooltipContent
+                              side="bottom"
+                              align="start"
+                              className="font-mono text-xs"
+                            >
+                              {e.domain}
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                         {e.sources.size > 1 && (
                           <div className="mt-1 text-xs text-muted-foreground">
                             {e.sources.size} 个来源重复命中
@@ -684,9 +880,13 @@ function DomainsPage() {
                           ))}
                         </div>
                       </td>
-                      <td className="p-3">
+                      <td className="sticky right-0 z-10 bg-inherit p-3">
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setDnsDomain(e.domain)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setDnsDomain(e.domain)}
+                          >
                             <ScanSearch className="mr-1 size-3.5" />
                             DNS
                           </Button>
@@ -709,8 +909,72 @@ function DomainsPage() {
               </table>
             </TooltipProvider>
           </div>
+          <div className="flex shrink-0 flex-col gap-3 border-t bg-card/95 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="font-mono text-xs text-muted-foreground">
+              第 {currentPage} / {pageCount} 页 · 显示{" "}
+              {sortedVisible.length === 0 ? 0 : pageStart + 1}-
+              {Math.min(pageStart + pageRows.length, sortedVisible.length)} / {sortedVisible.length}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(1)}
+                disabled={currentPage <= 1}
+              >
+                首页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                disabled={currentPage <= 1}
+              >
+                上一页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+                disabled={currentPage >= pageCount}
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
         </Card>
       </div>
+
+      {selected.size > 0 && (
+        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-4xl flex-col gap-3 rounded-xl border border-primary/30 bg-card/95 p-3 shadow-2xl shadow-black/35 backdrop-blur md:left-[calc(50%+2rem)] md:right-auto md:w-[min(44rem,calc(100vw-18rem))] md:-translate-x-1/2 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="grid size-9 place-items-center rounded-lg bg-primary/12 text-primary">
+              <PackageCheck className="size-4" />
+            </span>
+            <div>
+              <div className="text-sm font-medium">已选中 {selected.size} 个域名</div>
+              <div className="text-xs text-muted-foreground">
+                跨页选择已保留，可保存为工作集或导出。
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/bind">批量绑定</Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportCsv}>
+              导出 CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>
+              <Trash2 className="size-3.5" />
+              清空
+            </Button>
+            <Button size="sm" onClick={saveSelection}>
+              保存工作集
+            </Button>
+          </div>
+        </div>
+      )}
 
       <DnsDialog
         domain={dnsDomain}
@@ -719,6 +983,54 @@ function DomainsPage() {
       />
     </div>
   );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-accent hover:text-accent-foreground"
+      onClick={() => onSort(sortKey)}
+    >
+      {label}
+      {active ? (
+        dir === "asc" ? (
+          <ChevronUp className="size-3.5" />
+        ) : (
+          <ChevronDown className="size-3.5" />
+        )
+      ) : (
+        <ChevronsUpDown className="size-3.5 opacity-45" />
+      )}
+    </button>
+  );
+}
+
+function chipClass(active: boolean) {
+  return [
+    "inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs transition-colors",
+    active
+      ? "border-primary/40 bg-primary/12 text-primary"
+      : "border-border/70 bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+  ].join(" ");
+}
+
+function domainTld(domain: string) {
+  const parts = domain.split(".").filter(Boolean);
+  return parts.length > 1 ? (parts.at(-1) ?? "") : "";
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
@@ -738,7 +1050,9 @@ function combineNsStatus(a: NsStatus, b: NsStatus): NsStatus {
 
 function nsBadge(status: NsStatus) {
   if (status === "cloudflare") {
-    return <Badge className="w-fit bg-success text-success-foreground hover:bg-success">已指向 CF</Badge>;
+    return (
+      <Badge className="w-fit bg-success text-success-foreground hover:bg-success">已指向 CF</Badge>
+    );
   }
   if (status === "other")
     return (
@@ -759,7 +1073,11 @@ function zoneBadge(entry: Entry, cfZonePulled: boolean) {
   if (zone) {
     const s = zone.cloudflareStatus ?? "unknown";
     if (s === "active") {
-      return <Badge className="bg-success text-success-foreground hover:bg-success text-[10px]">active</Badge>;
+      return (
+        <Badge className="bg-success text-success-foreground hover:bg-success text-[10px]">
+          active
+        </Badge>
+      );
     }
     if (s === "pending") {
       return (

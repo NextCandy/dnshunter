@@ -13,11 +13,29 @@ import { checkGate, lockSite } from "@/lib/gate.functions";
 import { getSiteSettings } from "@/lib/site-settings.functions";
 import { useDomains } from "@/lib/domain-store";
 import { useTheme } from "@/components/theme-provider";
+import { cn } from "@/lib/utils";
 import { DeckMark } from "@/components/deck-mark";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandShortcut,
+} from "@/components/ui/command";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Bell,
   Globe,
@@ -32,6 +50,11 @@ import {
   Moon,
   Download,
   PenLine,
+  Search,
+  UserCircle2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Archive,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_app")({
@@ -47,9 +70,9 @@ const HEADINGS: { to: string; title: string; sub: string }[] = [
   { to: "/domains", title: "域名列表", sub: "拉取 · 合并 · 筛选" },
   { to: "/bind", title: "批量绑定", sub: "接入 Cloudflare" },
   { to: "/records", title: "解析记录", sub: "DNS 记录管理" },
-  { to: "/backup", title: "备份与恢复", sub: "导出 · 差异 · 恢复" },
-  { to: "/site-settings", title: "站点设置", sub: "前台展示与联系信息" },
-  { to: "/settings", title: "设置", sub: "凭证与偏好" },
+  { to: "/backup", title: "数据管理", sub: "备份 · 恢复 · 导入导出" },
+  { to: "/site-settings", title: "前台设置", sub: "公开页展示与联系信息" },
+  { to: "/settings", title: "系统设置", sub: "凭证、注册商与偏好" },
 ];
 
 function AppLayout() {
@@ -65,19 +88,63 @@ function AppLayout() {
   const logoUrl = settingsQuery.data?.settings.logoUrl || "";
   const domains = useDomains();
   const notifications = buildNotifications(domains);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    setSidebarCollapsed(localStorage.getItem("dshunter.sidebarCollapsed") === "true");
+  }, []);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((value) => {
+      const next = !value;
+      localStorage.setItem("dshunter.sidebarCollapsed", String(next));
+      return next;
+    });
+  };
+
   const onLock = async () => {
     await lock();
     router.navigate({ to: "/unlock" });
   };
-  const nav = <SidebarNav onLock={onLock} siteName={siteName} logoUrl={logoUrl} />;
+  const nav = (
+    <SidebarNav
+      collapsed={false}
+      riskCount={notifications.length}
+      siteName={siteName}
+      logoUrl={logoUrl}
+    />
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
-        {nav}
+      <aside
+        className={cn(
+          "hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex",
+          sidebarCollapsed ? "w-[4.75rem]" : "w-64",
+        )}
+      >
+        <SidebarNav
+          collapsed={sidebarCollapsed}
+          riskCount={notifications.length}
+          siteName={siteName}
+          logoUrl={logoUrl}
+        />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-3 backdrop-blur-md md:px-5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:inline-flex"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <PanelLeftClose className="size-4" />
+            )}
+          </Button>
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="md:hidden" aria-label="打开导航">
@@ -101,6 +168,7 @@ function AppLayout() {
           </div>
 
           <div className="ml-auto flex items-center gap-1">
+            <GlobalSearch />
             <Button asChild size="sm" className="hidden h-8 gap-1.5 font-medium sm:inline-flex">
               <Link to="/domains">
                 <Download className="size-3.5" />
@@ -109,6 +177,7 @@ function AppLayout() {
             </Button>
             <ThemeSwitch />
             <NotificationsBell notifications={notifications} />
+            <UserMenu siteName={siteName} onLock={onLock} />
           </div>
         </header>
 
@@ -202,21 +271,27 @@ function NotificationsBell({ notifications }: { notifications: NotificationItem[
 }
 
 function SidebarNav({
-  onLock,
+  collapsed,
+  riskCount,
   siteName,
   logoUrl,
 }: {
-  onLock: () => void | Promise<void>;
+  collapsed: boolean;
+  riskCount: number;
   siteName: string;
   logoUrl: string;
 }) {
   return (
     <div className="flex h-full w-full flex-col gap-0.5 p-3">
-      <Link to="/dashboard" className="mb-4 flex items-center gap-2.5 px-1.5 pt-1">
+      <Link
+        to="/dashboard"
+        className={cn("mb-4 flex items-center gap-2.5 px-1.5 pt-1", collapsed && "justify-center")}
+        title={collapsed ? siteName : undefined}
+      >
         <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary ring-1 ring-inset ring-primary/25">
           <AdminBrandIcon logoUrl={logoUrl} className="size-5" />
         </span>
-        <span className="min-w-0">
+        <span className={cn("min-w-0", collapsed && "sr-only")}>
           <span className="block truncate font-display text-[15px] font-bold leading-none tracking-tight text-sidebar-foreground">
             {siteName}
           </span>
@@ -226,45 +301,43 @@ function SidebarNav({
         </span>
       </Link>
 
-      <NavGroup label="域名" />
-      <NavItem to="/dashboard" exact icon={<LayoutDashboard className="size-4" />}>
+      <NavGroup label="域名" collapsed={collapsed} />
+      <NavItem
+        to="/dashboard"
+        exact
+        icon={<LayoutDashboard className="size-4" />}
+        collapsed={collapsed}
+      >
         指挥台
       </NavItem>
-      <NavItem to="/domains" icon={<Globe className="size-4" />}>
+      <NavItem to="/domains" icon={<Globe className="size-4" />} collapsed={collapsed}>
         域名列表
       </NavItem>
-      <NavItem to="/manual" icon={<PenLine className="size-4" />}>
+      <NavItem to="/manual" icon={<PenLine className="size-4" />} collapsed={collapsed}>
         手动域名
       </NavItem>
-      <NavItem to="/bind" icon={<Link2 className="size-4" />}>
+      <NavItem to="/bind" icon={<Link2 className="size-4" />} collapsed={collapsed}>
         批量绑定
       </NavItem>
-      <NavItem to="/records" icon={<ListTree className="size-4" />} badge="风险">
+      <NavItem
+        to="/records"
+        icon={<ListTree className="size-4" />}
+        badge={riskCount > 0 ? String(riskCount) : undefined}
+        collapsed={collapsed}
+      >
         解析记录
       </NavItem>
 
-      <NavGroup label="系统" />
-      <NavItem to="/backup" icon={<DatabaseBackup className="size-4" />}>
-        备份与恢复
+      <NavGroup label="系统" collapsed={collapsed} />
+      <NavItem to="/backup" icon={<DatabaseBackup className="size-4" />} collapsed={collapsed}>
+        数据管理
       </NavItem>
-      <NavItem to="/site-settings" icon={<Settings className="size-4" />}>
-        站点设置
+      <NavItem to="/site-settings" icon={<Archive className="size-4" />} collapsed={collapsed}>
+        前台设置
       </NavItem>
-      <NavItem to="/settings" icon={<Settings className="size-4" />}>
-        设置
+      <NavItem to="/settings" icon={<Settings className="size-4" />} collapsed={collapsed}>
+        系统设置
       </NavItem>
-
-      <div className="mt-auto pt-2">
-        <div className="mb-2 border-t border-sidebar-border" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
-          onClick={onLock}
-        >
-          <LogOut className="size-4" /> 退出登录
-        </Button>
-      </div>
     </div>
   );
 }
@@ -276,9 +349,14 @@ function AdminBrandIcon({ logoUrl, className }: { logoUrl: string; className?: s
   return <img src={logoUrl} alt="" className={className} onError={() => setFailed(true)} />;
 }
 
-function NavGroup({ label }: { label: string }) {
+function NavGroup({ label, collapsed }: { label: string; collapsed: boolean }) {
   return (
-    <div className="px-3 pb-1 pt-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+    <div
+      className={cn(
+        "px-3 pb-1 pt-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70",
+        collapsed && "sr-only",
+      )}
+    >
       {label}
     </div>
   );
@@ -288,12 +366,14 @@ function NavItem({
   to,
   icon,
   badge,
+  collapsed = false,
   exact = false,
   children,
 }: {
   to: string;
   icon: ReactNode;
   badge?: string;
+  collapsed?: boolean;
   exact?: boolean;
   children: ReactNode;
 }) {
@@ -301,21 +381,119 @@ function NavItem({
     <Link
       to={to}
       activeOptions={{ exact }}
-      className="group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+      title={collapsed ? String(children) : undefined}
+      className={cn(
+        "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+        collapsed && "justify-center px-2",
+      )}
       activeProps={{
         className:
           "relative flex items-center gap-2.5 rounded-lg bg-sidebar-accent px-3 py-2 text-sm font-medium text-sidebar-accent-foreground before:absolute before:-left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-primary before:shadow-[0_0_8px_var(--color-primary)]",
       }}
     >
       <span className="grid size-4 shrink-0 place-items-center opacity-90">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      <span className={cn("min-w-0 flex-1 truncate", collapsed && "sr-only")}>{children}</span>
       {badge && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/12 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full bg-destructive/12 px-1.5 py-0.5 text-[10px] font-medium text-destructive",
+            collapsed && "absolute right-1 top-1 px-1",
+          )}
+        >
           <span className="size-1.5 rounded-full bg-destructive" />
-          {badge}
+          <span className={cn(collapsed && "sr-only")}>{badge}</span>
         </span>
       )}
     </Link>
+  );
+}
+
+function GlobalSearch() {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setOpen((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const go = async (to: string) => {
+    setOpen(false);
+    await router.navigate({ to });
+  };
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="hidden h-8 min-w-48 justify-start gap-2 border-border/70 bg-card/70 text-muted-foreground lg:inline-flex"
+        onClick={() => setOpen(true)}
+      >
+        <Search className="size-3.5" />
+        搜索页面或操作
+        <kbd className="ml-auto rounded border border-border/70 bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+          Ctrl K
+        </kbd>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden"
+        aria-label="全局搜索"
+        onClick={() => setOpen(true)}
+      >
+        <Search className="size-4" />
+      </Button>
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        <CommandInput placeholder="搜索页面、功能或操作..." />
+        <CommandList>
+          <CommandEmpty>没有匹配的页面</CommandEmpty>
+          <CommandGroup heading="页面">
+            {HEADINGS.map((item) => (
+              <CommandItem
+                key={item.to}
+                value={`${item.title} ${item.sub}`}
+                onSelect={() => go(item.to)}
+              >
+                <Search className="size-4" />
+                <span>{item.title}</span>
+                <CommandShortcut>{item.sub}</CommandShortcut>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
+    </>
+  );
+}
+
+function UserMenu({ siteName, onLock }: { siteName: string; onLock: () => void | Promise<void> }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="用户菜单">
+          <UserCircle2 className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel>
+          <div className="truncate text-sm">{siteName}</div>
+          <div className="text-xs font-normal text-muted-foreground">管理员会话</div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onLock}>
+          <LogOut className="size-4" />
+          退出登录
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
