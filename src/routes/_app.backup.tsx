@@ -24,7 +24,7 @@ import { Download, Upload, GitCompare, RotateCcw, ListChecks, Play } from "lucid
 type RestoreStrategy = "add-missing" | "overwrite" | "replace-all";
 
 export const Route = createFileRoute("/_app/backup")({
-  head: () => ({ meta: [{ title: "备份与恢复 · dshunter" }] }),
+  head: () => ({ meta: [{ title: "数据管理 · dshunter" }] }),
   component: BackupPage,
 });
 
@@ -32,9 +32,10 @@ function BackupPage() {
   const domains = useDomains();
   return (
     <div className="max-w-6xl">
-      <h1 className="font-display text-2xl font-bold mb-1">备份 · 恢复 · 差异</h1>
+      <h1 className="font-display text-2xl font-bold mb-1">数据管理</h1>
       <div className="text-sm text-muted-foreground mb-6">
-        当前选中 <Badge variant="secondary">{domains.length}</Badge> 个域名（在
+        备份、恢复、差异审计与导入导出都在这里处理。当前选中{" "}
+        <Badge variant="secondary">{domains.length}</Badge> 个域名（在
         <Link to="/domains" className="text-primary underline mx-1">
           域名列表
         </Link>
@@ -56,7 +57,7 @@ function BackupPage() {
         <Tabs defaultValue="export">
           <TabsList>
             <TabsTrigger value="export">
-              <Download className="size-4 mr-1" /> 导出
+              <Download className="size-4 mr-1" /> 导入 / 导出
             </TabsTrigger>
             <TabsTrigger value="diff">
               <GitCompare className="size-4 mr-1" /> 差异对比
@@ -352,8 +353,12 @@ function RestoreTab() {
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="font-semibold">变更计划预览</div>
-            <Badge className="bg-success text-success-foreground hover:bg-success">创建 {totals.create}</Badge>
-            <Badge className="bg-primary text-primary-foreground hover:bg-primary">更新 {totals.update}</Badge>
+            <Badge className="bg-success text-success-foreground hover:bg-success">
+              创建 {totals.create}
+            </Badge>
+            <Badge className="bg-primary text-primary-foreground hover:bg-primary">
+              更新 {totals.update}
+            </Badge>
             <Badge variant="destructive">删除 {totals.delete}</Badge>
             <Badge variant="secondary">跳过 {totals.skip}</Badge>
             {!hasChanges && (

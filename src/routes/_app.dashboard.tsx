@@ -3,46 +3,36 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { getTokenStatus } from "@/lib/registrars.functions";
+import { listRegistrars, type RegistrarCatalogItem } from "@/lib/registrar-catalog.functions";
 import { getCfHealth } from "@/lib/cloudflare.functions";
 import { useDomains } from "@/lib/domain-store";
 import { formatDateTime } from "@/lib/date-format";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Globe,
-  Link2,
-  ListTree,
-  Settings,
-  KeyRound,
-  ShieldCheck,
-  ShieldAlert,
-} from "lucide-react";
+import { Globe, Link2, ListTree, Settings, KeyRound, ShieldCheck, ShieldAlert } from "lucide-react";
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({ meta: [{ title: "指挥台 · dshunter" }] }),
   component: Dashboard,
 });
 
-const SOURCES: { key: string; label: string }[] = [
-  { key: "cloudflare", label: "Cloudflare" },
-  { key: "spaceship", label: "Spaceship" },
-  { key: "dynadot", label: "Dynadot" },
-  { key: "porkbun", label: "Porkbun" },
-  { key: "namecheap", label: "Namecheap" },
-  { key: "aliyun", label: "阿里云" },
-  { key: "tencent", label: "腾讯云" },
-  { key: "west", label: "西部数码" },
-];
-
 type LastPull = { source: string; count: number; cloudflareCount: number; at: string };
+type TokenMap = Record<string, boolean | undefined>;
 
 function Dashboard() {
   const tokenFn = useServerFn(getTokenStatus);
+  const listRegistrarFn = useServerFn(listRegistrars);
   const healthFn = useServerFn(getCfHealth);
   const tokens = useQuery({ queryKey: ["tokens"], queryFn: () => tokenFn() });
+  const registrars = useQuery({
+    queryKey: ["registrar-catalog"],
+    queryFn: () => listRegistrarFn(),
+  });
   const health = useQuery({ queryKey: ["cf-health"], queryFn: () => healthFn() });
   const workingSet = useDomains();
+  const activeRegistrars = (registrars.data?.rows ?? []).filter((row) => row.active);
+  const tokenMap: TokenMap = tokens.data ?? {};
 
   const [lastPull, setLastPull] = useState<LastPull | null>(null);
   useEffect(() => {
@@ -55,13 +45,13 @@ function Dashboard() {
   }, []);
 
   const configuredCount = tokens.data
-    ? SOURCES.filter((s) => (tokens.data as any)[s.key]).length
+    ? activeRegistrars.filter((source) => registrarConfigured(source, tokenMap)).length
     : null;
 
   const stats: StatReadout[] = [
     {
       label: "已配置来源",
-      value: configuredCount === null ? "…" : `${configuredCount}/${SOURCES.length}`,
+      value: configuredCount === null ? "…" : `${configuredCount}/${activeRegistrars.length}`,
       dot: "signal-primary",
       to: "/settings",
     },
@@ -178,9 +168,7 @@ function Dashboard() {
             </Button>
           )}
         </div>
-        {health.data?.error && (
-          <p className="mt-2 text-xs text-destructive">{health.data.error}</p>
-        )}
+        {health.data?.error && <p className="mt-2 text-xs text-destructive">{health.data.error}</p>}
         {health.error && (
           <p className="mt-2 text-xs text-destructive">{(health.error as Error).message}</p>
         )}
@@ -195,14 +183,21 @@ function Dashboard() {
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {SOURCES.map((s) => {
-            const ok = tokens.data ? Boolean((tokens.data as any)[s.key]) : undefined;
+          {activeRegistrars.map((s) => {
+            const ok = tokens.data ? registrarConfigured(s, tokenMap) : undefined;
             return (
               <div
-                key={s.key}
+                key={s.id}
                 className="flex items-center justify-between rounded-lg border border-border/60 bg-card px-3 py-2 text-sm"
               >
-                <span>{s.label}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: s.brandColor }}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{s.shortName}</span>
+                </span>
                 <span
                   className={cn(
                     "signal",
@@ -213,6 +208,11 @@ function Dashboard() {
               </div>
             );
           })}
+          {activeRegistrars.length === 0 && (
+            <div className="col-span-full rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              暂无启用的注册商来源，请到系统设置新增或启用来源。
+            </div>
+          )}
         </div>
       </Card>
 
@@ -239,12 +239,18 @@ function Dashboard() {
         <QuickLink
           to="/settings"
           icon={<Settings className="size-5" />}
-          title="设置"
-          desc="API 凭证与偏好"
+          title="系统设置"
+          desc="API 凭证、注册商与偏好"
         />
       </div>
     </div>
   );
+}
+
+function registrarConfigured(row: RegistrarCatalogItem, tokens: TokenMap) {
+  if (row.id === "cloudflare") return Boolean(tokens.cloudflare);
+  if (!row.supportsSync) return false;
+  return Boolean(tokens[row.id]);
 }
 
 type StatReadout = {

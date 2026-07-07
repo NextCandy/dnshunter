@@ -15,7 +15,7 @@ import { DeckMark } from "@/components/deck-mark";
 import type { SiteSettings, SocialLink } from "@/lib/site-settings.server";
 
 export const Route = createFileRoute("/_app/site-settings")({
-  head: () => ({ meta: [{ title: "站点设置 · dshunter" }] }),
+  head: () => ({ meta: [{ title: "前台设置 · dshunter" }] }),
   component: SiteSettingsPage,
 });
 
@@ -82,7 +82,7 @@ function SiteSettingsPage() {
     <div className="mx-auto grid max-w-6xl gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-5">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight">站点设置</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight">前台设置</h1>
           <p className="text-sm text-muted-foreground">
             管理前台品牌、介绍、图标、联系方式和页脚备案信息。
           </p>

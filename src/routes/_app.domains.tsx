@@ -10,6 +10,7 @@ import {
   type Registrar,
   type RegistrarDomainItem,
 } from "@/lib/registrars.functions";
+import { listRegistrars, type RegistrarCatalogItem } from "@/lib/registrar-catalog.functions";
 import type {
   PersistedRegistrarDomain,
   RegistrarSyncJob,
@@ -111,12 +112,15 @@ type PullState = {
   error?: string;
 };
 
-const SOURCE_DEFS: {
+type SourceDef = {
   id: Exclude<Source, "manual" | "cf-registrar">;
   label: string;
   description: string;
   tokenKey: string;
-}[] = [
+  brandColor?: string;
+};
+
+const FALLBACK_SOURCE_DEFS: SourceDef[] = [
   {
     id: "cloudflare-zone",
     label: "Cloudflare Zone",
@@ -135,11 +139,16 @@ const SOURCE_DEFS: {
 function DomainsPage() {
   const router = useRouter();
   const tokensFn = useServerFn(getTokenStatus);
+  const listRegistrarFn = useServerFn(listRegistrars);
   const listFn = useServerFn(listRegistrarDomains);
   const persistedFn = useServerFn(listPersistedDomains);
   const jobsFn = useServerFn(listRegistrarSyncJobs);
   const zonesFn = useServerFn(listZones);
   const tokens = useQuery({ queryKey: ["tokens"], queryFn: () => tokensFn() });
+  const registrarCatalog = useQuery({
+    queryKey: ["registrar-catalog"],
+    queryFn: () => listRegistrarFn(),
+  });
   const persistedAssets = useQuery({
     queryKey: ["persisted-registrar-domains"],
     queryFn: () => persistedFn() as Promise<{ rows: PersistedRegistrarDomain[] }>,
@@ -149,6 +158,10 @@ function DomainsPage() {
     queryFn: () => jobsFn() as Promise<{ rows: RegistrarSyncJob[] }>,
   });
   const tokenPresence: TokenStatus = tokens.data ?? {};
+  const sourceDefs = useMemo(
+    () => buildSourceDefs(registrarCatalog.data?.rows ?? []),
+    [registrarCatalog.data?.rows],
+  );
 
   const [dnsDomain, setDnsDomain] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -296,7 +309,7 @@ function DomainsPage() {
         localStorage.setItem(
           "domainops.lastPull",
           JSON.stringify({
-            source: sourceLabel(src),
+            source: sourceLabel(src, sourceDefs),
             count: items.length,
             cloudflareCount,
             at: new Date().toISOString(),
@@ -311,8 +324,8 @@ function DomainsPage() {
       }
       toast.success(
         syncJob
-          ? `${sourceLabel(src)} 同步完成：新增 ${syncJob.createdCount}，更新 ${syncJob.updatedCount}，缺失标记 ${syncJob.missingCount}`
-          : `${sourceLabel(src)} 拉取完成：${items.length} 个域名，${cloudflareCount} 个已指向 Cloudflare`,
+          ? `${sourceLabel(src, sourceDefs)} 同步完成：新增 ${syncJob.createdCount}，更新 ${syncJob.updatedCount}，缺失标记 ${syncJob.missingCount}`
+          : `${sourceLabel(src, sourceDefs)} 拉取完成：${items.length} 个域名，${cloudflareCount} 个已指向 Cloudflare`,
       );
     },
     onError: (e: unknown, src) => {
@@ -415,7 +428,7 @@ function DomainsPage() {
 
   const duplicateCount = merged.filter((e) => e.sources.size > 1).length;
   const cloudflareNsCount = merged.filter((e) => e.nsStatus === "cloudflare").length;
-  const configuredCount = SOURCE_DEFS.filter((s) => Boolean(tokenPresence[s.tokenKey])).length;
+  const configuredCount = sourceDefs.filter((s) => Boolean(tokenPresence[s.tokenKey])).length;
 
   const toggle = (d: string) => {
     const next = new Set(selected);
@@ -438,7 +451,7 @@ function DomainsPage() {
   const exportCsv = () => {
     const rows = sortedVisible.map((entry) => [
       entry.domain,
-      [...entry.sources].map(sourceLabel).join(" / "),
+      [...entry.sources].map((source) => sourceLabel(source, sourceDefs)).join(" / "),
       entry.nsStatus,
       entry.nsProvider ?? "",
       entry.nameservers.join(" / "),
@@ -496,13 +509,13 @@ function DomainsPage() {
               <div>
                 <div className="font-semibold">注册商连接</div>
                 <div className="text-xs text-muted-foreground">
-                  已配置 {configuredCount} / {SOURCE_DEFS.length} 个来源
+                  已配置 {configuredCount} / {sourceDefs.length} 个来源
                 </div>
               </div>
               <Server className="size-4 text-muted-foreground" />
             </div>
             <div className="space-y-2">
-              {SOURCE_DEFS.map((source) => (
+              {sourceDefs.map((source) => (
                 <SourcePullRow
                   key={source.id}
                   source={source}
@@ -513,6 +526,11 @@ function DomainsPage() {
                   onPull={() => pull.mutate(source.id)}
                 />
               ))}
+              {sourceDefs.length === 0 && (
+                <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  暂无启用的注册商来源，请到系统设置新增或启用。
+                </div>
+              )}
             </div>
           </Card>
 
@@ -530,7 +548,7 @@ function DomainsPage() {
               {(syncJobs.data?.rows ?? []).slice(0, 5).map((job) => (
                 <div key={job.id} className="rounded-md border bg-background p-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{sourceLabel(job.registrar)}</span>
+                    <span className="font-medium">{sourceLabel(job.registrar, sourceDefs)}</span>
                     <Badge variant={job.status === "failed" ? "destructive" : "secondary"}>
                       {job.status === "failed"
                         ? "失败"
@@ -621,7 +639,7 @@ function DomainsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部来源</SelectItem>
-                  {SOURCE_DEFS.map((s) => (
+                  {sourceDefs.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.label} ({sourceCounts[s.id] ?? 0})
                     </SelectItem>
@@ -875,7 +893,7 @@ function DomainsPage() {
                         <div className="flex flex-wrap gap-1">
                           {[...e.sources].map((s) => (
                             <Badge key={s} variant="secondary" className="text-[10px]">
-                              {sourceLabel(s)}
+                              {sourceLabel(s, sourceDefs)}
                             </Badge>
                           ))}
                         </div>
@@ -1110,7 +1128,7 @@ function SourcePullRow({
   count,
   onPull,
 }: {
-  source: (typeof SOURCE_DEFS)[number];
+  source: SourceDef;
   configured: boolean;
   loading: boolean;
   state: PullState;
@@ -1195,8 +1213,51 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-function sourceLabel(source: Source) {
+function sourceLabel(source: Source, sourceDefs: readonly SourceDef[] = FALLBACK_SOURCE_DEFS) {
   if (source === "manual") return "手动";
-  const found = SOURCE_DEFS.find((s) => s.id === source);
+  const found =
+    sourceDefs.find((s) => s.id === source) ?? FALLBACK_SOURCE_DEFS.find((s) => s.id === source);
   return found?.label ?? source;
+}
+
+function buildSourceDefs(catalog: RegistrarCatalogItem[]): SourceDef[] {
+  if (catalog.length === 0) return FALLBACK_SOURCE_DEFS;
+  const rows = catalog.filter((row) => row.active && row.supportsSync);
+  const defs = rows
+    .map((row): SourceDef | null => {
+      if (row.id === "cloudflare") {
+        return {
+          id: "cloudflare-zone",
+          label: "Cloudflare Zone",
+          description: "已接入 Cloudflare 的域名",
+          tokenKey: "cloudflare",
+          brandColor: row.brandColor,
+        };
+      }
+      if (isSourceId(row.id)) {
+        return {
+          id: row.id,
+          label: row.shortName || row.name,
+          description: "注册商域名列表",
+          tokenKey: row.id,
+          brandColor: row.brandColor,
+        };
+      }
+      return null;
+    })
+    .filter((row): row is SourceDef => Boolean(row));
+  return defs;
+}
+
+function isSourceId(value: string): value is SourceDef["id"] {
+  return (
+    value === "spaceship" ||
+    value === "dynadot" ||
+    value === "porkbun" ||
+    value === "cloudflare-zone" ||
+    value === "namecheap" ||
+    value === "aliyun" ||
+    value === "tencent" ||
+    value === "west"
+  );
 }
