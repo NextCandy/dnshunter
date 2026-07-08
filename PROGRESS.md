@@ -127,6 +127,19 @@ npm run build
   - `npm run build` 通过；仅有既有 TanStack `inputValidator()` 弃用和 Vite tsconfig paths 提示。
   - 本地 `/settings` 新增注册商弹窗已渲染 REST URL、Header、POST Body、响应路径、域名字段；无控制台错误。
   - 本地 `/domains` 注册商连接区域正常渲染；无控制台错误。
+- NAS 部署：
+  - 已部署到 `/volume1/docker/dshunter`，容器 `dshunter` healthy。
+  - 本次备份：
+    - `/volume1/docker/_backups/dshunter/dshunter-20260708-094053.tar.gz`
+    - `/volume1/docker/_backups/dshunter/dshunter-data-20260708-094053.tar.gz`
+    - `/volume1/docker/_backups/dshunter/docker-compose-20260708-094053.yml`
+    - `/volume1/docker/_backups/dshunter/env-20260708-094053.bak`
+  - 部署中发现 `data` 目录权限被宿主用户递归覆盖，容器内 `node` 用户无法读取 `/app/data`，导致站点设置 API 一度回退默认值；已将 `/volume1/docker/dshunter/data` 修正为容器用户可读写，数据未丢失。
+- 线上验证：
+  - `https://dshunter.com` 返回 200。
+  - `https://dshunter.com/api/site-settings` 已恢复原站点联系字段。
+  - 未登录调用 `https://dshunter.com/api/admin/site-settings` 返回 401。
+  - 线上 `/settings` 新增注册商弹窗已渲染 REST URL、Header、POST Body、响应路径、域名字段；无控制台错误。
 
 1. 为具体自定义注册商配置 REST 同步端点，并用真实返回数据做一次端到端同步实测。
 2. 单独复核线上后台登录自动化，并确认浏览器后台设置页可登录进入。
