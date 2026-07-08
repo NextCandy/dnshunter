@@ -38,6 +38,12 @@ export type RegistrarDomainItem = SyncableRegistrarDomain & {
   nsError?: string;
 };
 
+export type RegistrarSyncPreview = {
+  count: number;
+  sampleDomains: string[];
+  warnings: string[];
+};
+
 type RawRegistrarDomain = string | (Partial<SyncableRegistrarDomain> & Record<string, unknown>);
 
 function isBuiltinRegistrar(registrar: Registrar): registrar is BuiltinRegistrar {
@@ -205,6 +211,30 @@ export async function pullRegistrarDomainItems(input: {
       privacyProtection: item?.privacyProtection,
     };
   });
+}
+
+export async function previewRegistrarDomains(input: {
+  registrar: Registrar;
+  accountId?: string;
+}): Promise<RegistrarSyncPreview> {
+  const raw = await fetchRawDomains(input.registrar, input.accountId);
+  const warnings: string[] = [];
+  const domains = new Set<string>();
+
+  for (const row of raw) {
+    const normalized = normalizeRawItem(row);
+    if (!normalized) {
+      warnings.push("部分返回项无法识别为有效域名，已在预检中跳过。");
+      continue;
+    }
+    domains.add(normalized.domain);
+  }
+
+  return {
+    count: domains.size,
+    sampleDomains: [...domains].sort().slice(0, 8),
+    warnings: [...new Set(warnings)],
+  };
 }
 
 function normalizeRawItem(item: RawRegistrarDomain): SyncableRegistrarDomain | null {

@@ -2,17 +2,20 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireGate } from "./auth-middleware";
 import { getSecretPresence } from "./secrets.server";
 import { listRegistrarCatalog } from "./registrar-catalog.server";
+import { recordOperationLog } from "./operation-log.server";
 import {
+  previewRegistrarDomains,
   syncRegistrarDomains,
   type Registrar,
   type RegistrarDomainItem,
+  type RegistrarSyncPreview,
 } from "./registrar-sync.server";
 import {
   listPersistedRegistrarDomains,
   listPersistedRegistrarSyncJobs,
 } from "./registrar-domain-store.server";
 
-export type { Registrar, RegistrarDomainItem };
+export type { Registrar, RegistrarDomainItem, RegistrarSyncPreview };
 
 export const getTokenStatus = createServerFn({ method: "GET" })
   .middleware([requireGate])
@@ -42,6 +45,28 @@ export const listRegistrarDomains = createServerFn({ method: "POST" })
   .inputValidator((d: { registrar: Registrar; accountId?: string }) => d)
   .handler(async ({ data }) => {
     return syncRegistrarDomains(data);
+  });
+
+export const previewRegistrarSync = createServerFn({ method: "POST" })
+  .middleware([requireGate])
+  .inputValidator((d: { registrar: Registrar; accountId?: string }) => d)
+  .handler(async ({ data }) => {
+    const result = await previewRegistrarDomains(data);
+    await recordOperationLog({
+      category: "registrar",
+      action: "registrar.sync_preview",
+      title: "预检注册商同步端点",
+      detail: `${data.registrar} 返回 ${result.count} 个可识别域名`,
+      entityType: "registrar",
+      entityId: data.registrar,
+      severity: result.count > 0 ? "success" : "warning",
+      metadata: {
+        registrar: data.registrar,
+        count: result.count,
+        warnings: result.warnings.length,
+      },
+    });
+    return result;
   });
 
 export const listPersistedDomains = createServerFn({ method: "GET" })

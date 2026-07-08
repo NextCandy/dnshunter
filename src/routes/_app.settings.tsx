@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { getSecretsStatus, saveSecrets } from "@/lib/secrets.functions";
+import { previewRegistrarSync, type RegistrarSyncPreview } from "@/lib/registrars.functions";
 import {
   deleteRegistrar,
   listRegistrars,
@@ -683,13 +684,18 @@ function CredentialPanel({
   onSaved: () => Promise<void>;
 }) {
   const saveFn = useServerFn(saveSecrets);
+  const previewFn = useServerFn(previewRegistrarSync);
   const [vals, setVals] = useState<Record<string, string>>({});
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<RegistrarSyncPreview | null>(null);
 
   const configured = isConfigured(row, presence);
   const editable = row.credentialFields.length > 0;
   const hasInput = Object.values(vals).some((value) => value.trim() !== "");
+  const canPreviewSync = row.supportsSync && row.id !== "cloudflare";
+  const credentialsReady = row.credentialFields.every((field) => field.optional) || configured;
 
   async function save() {
     const patch: Record<string, string> = {};
@@ -729,6 +735,24 @@ function CredentialPanel({
     }
   }
 
+  async function previewSync() {
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const result = await previewFn({ data: { registrar: row.id } });
+      setPreview(result);
+      if (result.count > 0) {
+        toast.success(`${row.name} 预检成功，识别 ${result.count} 个域名`);
+      } else {
+        toast.warning(`${row.name} 预检完成，但没有识别到域名`);
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "预检失败");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {!editable && (
@@ -765,6 +789,57 @@ function CredentialPanel({
       </div>
 
       {row.id === "cloudflare" && <CloudflarePermissions />}
+
+      {canPreviewSync && (
+        <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">同步端点预检</div>
+              <div className="text-xs leading-5 text-muted-foreground">
+                使用已保存的凭证和 REST 模板拉取一次域名列表，只解析结果，不写入域名库。
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={previewSync}
+              disabled={previewing || !credentialsReady}
+            >
+              {previewing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              预检同步
+            </Button>
+          </div>
+          {!credentialsReady && (
+            <div className="mt-2 text-xs text-warning">请先保存必填凭证，再进行同步预检。</div>
+          )}
+          {preview && (
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="text-muted-foreground">
+                已识别 <span className="font-mono text-foreground">{preview.count}</span> 个域名
+                {preview.sampleDomains.length > 0 ? "，样例：" : "。"}
+              </div>
+              {preview.sampleDomains.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {preview.sampleDomains.map((domain) => (
+                    <Badge key={domain} variant="secondary" className="font-mono text-[10px]">
+                      {domain}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {preview.warnings.map((warning) => (
+                <div key={warning} className="text-xs text-warning">
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <a

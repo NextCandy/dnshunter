@@ -141,11 +141,31 @@ npm run build
   - 未登录调用 `https://dshunter.com/api/admin/site-settings` 返回 401。
   - 线上 `/settings` 新增注册商弹窗已渲染 REST URL、Header、POST Body、响应路径、域名字段；无控制台错误。
 
-1. 为具体自定义注册商配置 REST 同步端点，并用真实返回数据做一次端到端同步实测。
-2. 单独复核线上后台登录自动化，并确认浏览器后台设置页可登录进入。
-3. 清理全仓历史 CRLF/Prettier 问题，使 `npm run lint` 可以作为全量门禁。
-4. 继续完善移动端后台表单和域名列表密集信息展示。
-5. 每完成一个阶段后继续执行：本地验证 -> GitHub 提交推送 -> CI -> NAS 备份部署 -> 线上验证。
+## 2026-07-08 自定义注册商同步预检阶段
+
+- 已新增后台“同步端点预检”能力：
+  - 服务端新增 `previewRegistrarDomains`，会调用注册商同步源并解析可识别域名，但不写入 `data/registrar-domains.json`。
+  - 后台设置页 API 凭证面板新增“同步端点预检”区块和“预检同步”按钮。
+  - 预检结果只展示识别数量、少量域名样例和解析警告，不回显请求头、Token、Secret 或明文凭证。
+  - 对定义了必填凭证但尚未保存的来源，预检按钮保持禁用并提示先保存凭证；无必填凭证的 REST 来源可直接预检。
+  - Cloudflare 凭证行继续作为 Cloudflare Zone 能力入口处理，不暴露会必然失败的注册商预检按钮。
+- 本地验证：
+  - `npx prettier --write src/lib/registrar-sync.server.ts src/lib/registrars.functions.ts src/routes/_app.settings.tsx` 通过。
+  - `npm run typecheck` 通过。
+  - 定向 ESLint 通过。
+  - `npm run build` 通过；仅有既有 TanStack `inputValidator()` 弃用和 Vite tsconfig paths 提示。
+  - 本地浏览器 `/settings` 页面身份正确、非空、无控制台错误。
+  - 桌面视口展开 Spaceship 凭证面板后，“同步端点预检”区块和禁用态按钮正常显示，无横向溢出。
+  - 390x844 移动视口展开同一面板后，“同步端点预检”区块正常显示，无横向溢出，控制台无错误。
+
+下一阶段：
+
+1. 将本阶段代码提交并同步到 GitHub、等待 CI，再备份部署到 NAS 实际项目并线上复核。
+2. 为具体自定义注册商配置 REST 同步端点，先运行“同步端点预检”，再执行一次真实端到端同步入库。
+3. 单独复核线上后台登录自动化，并确认浏览器后台设置页可登录进入。
+4. 清理全仓历史 CRLF/Prettier 问题，使 `npm run lint` 可以作为全量门禁。
+5. 继续完善移动端后台表单和域名列表密集信息展示。
+6. 每完成一个阶段后继续执行：本地验证 -> GitHub 提交推送 -> CI -> NAS 备份部署 -> 线上验证。
 
 ## 接手机器操作
 
