@@ -90,6 +90,22 @@ npm run typecheck
 npm run build
 ```
 
+## 2026-07-08 本轮收尾验证
+
+- 已将公开首页移动端统计卡片修复部署到 NAS 实际项目 `/volume1/docker/dshunter`。
+- 第二次 NAS 部署备份：
+  - `/volume1/docker/_backups/dshunter/dshunter-20260708-085532.tar.gz`
+  - `/volume1/docker/_backups/dshunter/dshunter-data-20260708-085532.tar.gz`
+  - `/volume1/docker/_backups/dshunter/docker-compose-20260708-085532.yml`
+  - `/volume1/docker/_backups/dshunter/env-20260708-085532.bak`
+- 线上验证：
+  - `https://dshunter.com` 返回 200。
+  - `https://dshunter.com/api/site-settings` 返回站点配置 JSON。
+  - 未登录调用 `https://dshunter.com/api/admin/site-settings` 返回 401。
+  - 390px 移动视口下公开首页无横向溢出，统计卡片为单列布局，浏览器控制台无错误。
+- GitHub 远端最新提交：`1653912 fix: 优化公开首页移动端统计布局`。
+- GitHub Actions docker workflow：通过。
+
 ## 下一步建议
 
 1. 为自定义注册商增加真实同步适配器接口。
