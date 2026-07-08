@@ -1,17 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireUnlocked } from "@/lib/session.server";
-import { syncRegistrarDomains, type Registrar } from "@/lib/registrar-sync.server";
-
-const REGISTRARS: readonly Registrar[] = [
-  "spaceship",
-  "dynadot",
-  "porkbun",
-  "cf-registrar",
-  "namecheap",
-  "aliyun",
-  "tencent",
-  "west",
-];
+import { listRegistrarCatalog } from "@/lib/registrar-catalog.server";
+import { BUILTIN_REGISTRAR_IDS, syncRegistrarDomains } from "@/lib/registrar-sync.server";
 
 export const Route = createFileRoute("/api/registrars/$id/sync-domains")({
   server: {
@@ -19,9 +9,13 @@ export const Route = createFileRoute("/api/registrars/$id/sync-domains")({
       POST: async ({ params, request }) => {
         try {
           await requireUnlocked();
-          const registrar = params.id as Registrar;
-          if (!REGISTRARS.includes(registrar)) {
-            return Response.json({ error: "注册商无效" }, { status: 400 });
+          const registrar = params.id;
+          const custom = (await listRegistrarCatalog()).find((row) => row.id === registrar);
+          const valid =
+            BUILTIN_REGISTRAR_IDS.includes(registrar as (typeof BUILTIN_REGISTRAR_IDS)[number]) ||
+            Boolean(custom?.active && custom.supportsSync);
+          if (!valid) {
+            return Response.json({ error: "注册商无效或尚未配置同步端点" }, { status: 400 });
           }
           const body = await request.json().catch(() => ({}));
           const accountId = typeof body.accountId === "string" ? body.accountId : undefined;

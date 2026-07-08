@@ -61,17 +61,7 @@ export const Route = createFileRoute("/_app/domains")({
   component: DomainsPage,
 });
 
-type Source =
-  | "manual"
-  | "spaceship"
-  | "dynadot"
-  | "porkbun"
-  | "cf-registrar"
-  | "cloudflare-zone"
-  | "namecheap"
-  | "aliyun"
-  | "tencent"
-  | "west";
+type Source = string;
 
 type NsStatus = "cloudflare" | "other" | "unknown";
 type PulledDomain = RegistrarDomainItem & {
@@ -113,7 +103,7 @@ type PullState = {
 };
 
 type SourceDef = {
-  id: Exclude<Source, "manual" | "cf-registrar">;
+  id: Source;
   label: string;
   description: string;
   tokenKey: string;
@@ -221,6 +211,11 @@ function DomainsPage() {
   }, [debouncedQuery, sourceFilter, nsFilter, zoneFilter, tldFilter, pageSize, sortKey, sortDir]);
 
   useEffect(() => {
+    setPulled((current) => ensurePulledSources(current, sourceDefs));
+    setPullState((current) => ensurePullStateSources(current, sourceDefs));
+  }, [sourceDefs]);
+
+  useEffect(() => {
     const rows = persistedAssets.data?.rows ?? [];
     if (rows.length === 0) return;
     setPulled((current) => {
@@ -290,7 +285,10 @@ function DomainsPage() {
       };
     },
     onMutate: (src) => {
-      setPullState((p) => ({ ...p, [src]: { ...p[src], status: "loading", error: undefined } }));
+      setPullState((p) => ({
+        ...p,
+        [src]: { ...(p[src] ?? idlePullState()), status: "loading", error: undefined },
+      }));
     },
     onSuccess: ({ src, items, syncJob }) => {
       const cloudflareCount = items.filter((item) => item.nsStatus === "cloudflare").length;
@@ -332,7 +330,12 @@ function DomainsPage() {
       const message = e instanceof Error ? e.message : "拉取域名失败";
       setPullState((p) => ({
         ...p,
-        [src]: { ...p[src], status: "error", error: message, at: new Date().toISOString() },
+        [src]: {
+          ...(p[src] ?? idlePullState()),
+          status: "error",
+          error: message,
+          at: new Date().toISOString(),
+        },
       }));
       toast.error(message);
     },
@@ -521,8 +524,8 @@ function DomainsPage() {
                   source={source}
                   configured={Boolean(tokenPresence[source.tokenKey])}
                   loading={pull.isPending && pull.variables === source.id}
-                  state={pullState[source.id]}
-                  count={pulled[source.id].length}
+                  state={pullState[source.id] ?? idlePullState()}
+                  count={pulled[source.id]?.length ?? 0}
                   onPull={() => pull.mutate(source.id)}
                 />
               ))}
@@ -1223,7 +1226,25 @@ function sourceLabel(source: Source, sourceDefs: readonly SourceDef[] = FALLBACK
 function buildSourceDefs(catalog: RegistrarCatalogItem[]): SourceDef[] {
   if (catalog.length === 0) return FALLBACK_SOURCE_DEFS;
   const rows = catalog.filter((row) => row.active && row.supportsSync);
-  const defs = rows
+  const defs = rows.map((row): SourceDef => {
+    if (row.id === "cloudflare") {
+      return {
+        id: "cloudflare-zone",
+        label: "Cloudflare Zone",
+        description: "已接入 Cloudflare 的域名",
+        tokenKey: "cloudflare",
+        brandColor: row.brandColor,
+      };
+    }
+    return {
+      id: row.id,
+      label: row.shortName || row.name,
+      description: "注册商域名列表",
+      tokenKey: row.id,
+      brandColor: row.brandColor,
+    };
+  });
+  const legacyDefs = rows
     .map((row): SourceDef | null => {
       if (row.id === "cloudflare") {
         return {
@@ -1246,6 +1267,7 @@ function buildSourceDefs(catalog: RegistrarCatalogItem[]): SourceDef[] {
       return null;
     })
     .filter((row): row is SourceDef => Boolean(row));
+  void legacyDefs;
   return defs;
 }
 
@@ -1260,4 +1282,26 @@ function isSourceId(value: string): value is SourceDef["id"] {
     value === "tencent" ||
     value === "west"
   );
+}
+
+function idlePullState(): PullState {
+  return { status: "idle", count: 0 };
+}
+
+function ensurePulledSources(
+  current: Record<Source, PulledDomain[]>,
+  sourceDefs: readonly SourceDef[],
+) {
+  const next = { ...current };
+  for (const source of sourceDefs) next[source.id] ??= [];
+  return next;
+}
+
+function ensurePullStateSources(
+  current: Record<Source, PullState>,
+  sourceDefs: readonly SourceDef[],
+) {
+  const next = { ...current };
+  for (const source of sourceDefs) next[source.id] ??= idlePullState();
+  return next;
 }

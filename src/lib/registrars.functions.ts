@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireGate } from "./auth-middleware";
 import { getSecretPresence } from "./secrets.server";
+import { listRegistrarCatalog } from "./registrar-catalog.server";
 import {
   syncRegistrarDomains,
   type Registrar,
@@ -17,7 +18,7 @@ export const getTokenStatus = createServerFn({ method: "GET" })
   .middleware([requireGate])
   .handler(async () => {
     const p = await getSecretPresence();
-    return {
+    const status: Record<string, boolean | undefined> = {
       cloudflare: p.CLOUDFLARE_API_TOKEN,
       spaceship: p.SPACESHIP_API_KEY && p.SPACESHIP_API_SECRET,
       dynadot: p.DYNADOT_API_KEY,
@@ -27,6 +28,13 @@ export const getTokenStatus = createServerFn({ method: "GET" })
       tencent: p.TENCENT_SECRET_ID && p.TENCENT_SECRET_KEY,
       west: p.WEST_USERNAME && p.WEST_API_PASSWORD,
     };
+    const catalog = await listRegistrarCatalog();
+    for (const row of catalog) {
+      const required = row.credentialFields.filter((field) => !field.optional);
+      if (required.length === 0) continue;
+      status[row.id] = required.every((field) => Boolean(p[field.key]));
+    }
+    return status;
   });
 
 export const listRegistrarDomains = createServerFn({ method: "POST" })

@@ -101,6 +101,17 @@ export async function getSecret(name: SecretKey): Promise<string | undefined> {
   return env && env !== "" ? env : undefined;
 }
 
+export async function getSecretValue(name: string): Promise<string | undefined> {
+  const key = normalizeSecretKey(name);
+  const allowed = await getAllowedSecretKeys();
+  if (!key || !allowed.has(key)) return undefined;
+  const store = await readStore();
+  const v = store[key];
+  if (v !== undefined && v !== "") return v;
+  const env = process.env[key];
+  return env && env !== "" ? env : undefined;
+}
+
 function normalizeSecretKey(name: string) {
   return name
     .trim()

@@ -12,6 +12,8 @@ export type {
   RegistrarCatalogItem,
   RegistrarCatalogPatch,
   RegistrarCredentialField,
+  RegistrarSyncHeader,
+  RegistrarSyncMethod,
   RegistrarSyncStrategy,
 } from "./registrar-catalog.server";
 

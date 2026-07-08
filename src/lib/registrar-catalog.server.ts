@@ -2,12 +2,18 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export type RegistrarSyncStrategy = "rest" | "graphql" | "scrape" | "manual";
+export type RegistrarSyncMethod = "GET" | "POST";
 
 export type RegistrarCredentialField = {
   key: string;
   label: string;
   secret?: boolean;
   optional?: boolean;
+};
+
+export type RegistrarSyncHeader = {
+  key: string;
+  value: string;
 };
 
 export type RegistrarCatalogItem = {
@@ -20,6 +26,12 @@ export type RegistrarCatalogItem = {
   brandColor: string;
   credentialFields: RegistrarCredentialField[];
   syncStrategy: RegistrarSyncStrategy;
+  syncMethod: RegistrarSyncMethod;
+  syncEndpointUrl?: string;
+  syncHeaders: RegistrarSyncHeader[];
+  syncBodyTemplate?: string;
+  syncResponsePath?: string;
+  syncDomainField?: string;
   defaultNameservers: string[];
   supportsSync: boolean;
   builtin: boolean;
@@ -39,6 +51,12 @@ export type RegistrarCatalogPatch = {
   brandColor?: string;
   credentialFields?: RegistrarCredentialField[];
   syncStrategy?: RegistrarSyncStrategy;
+  syncMethod?: RegistrarSyncMethod;
+  syncEndpointUrl?: string;
+  syncHeaders?: RegistrarSyncHeader[];
+  syncBodyTemplate?: string;
+  syncResponsePath?: string;
+  syncDomainField?: string;
   defaultNameservers?: string[];
   active?: boolean;
 };
@@ -62,6 +80,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
     brandColor: "#f59e0b",
     credentialFields: [{ key: "CLOUDFLARE_API_TOKEN", label: "API Token", secret: true }],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -81,6 +101,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       { key: "SPACESHIP_API_SECRET", label: "API Secret", secret: true },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -105,6 +127,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -124,6 +148,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       { key: "PORKBUN_SECRET_API_KEY", label: "Secret API Key", secret: true },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -145,6 +171,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       { key: "NAMECHEAP_CLIENT_IP", label: "Client IP" },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -164,6 +192,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       { key: "ALIYUN_ACCESS_KEY_SECRET", label: "AccessKey Secret", secret: true },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -183,6 +213,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       { key: "TENCENT_SECRET_KEY", label: "SecretKey", secret: true },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -202,6 +234,8 @@ export const BUILTIN_REGISTRARS: RegistrarCatalogItem[] = [
       { key: "WEST_API_PASSWORD", label: "API 密码", secret: true },
     ],
     syncStrategy: "rest",
+    syncMethod: "GET",
+    syncHeaders: [],
     defaultNameservers: [],
     supportsSync: true,
     builtin: true,
@@ -264,6 +298,12 @@ function migrateRegistrar(row: Partial<RegistrarCatalogItem>): RegistrarCatalogI
     brandColor: normalizeColor(row.brandColor),
     credentialFields: normalizeFields(row.credentialFields),
     syncStrategy: normalizeStrategy(row.syncStrategy),
+    syncMethod: normalizeMethod(row.syncMethod),
+    syncEndpointUrl: cleanText(row.syncEndpointUrl),
+    syncHeaders: normalizeHeaders(row.syncHeaders),
+    syncBodyTemplate: cleanText(row.syncBodyTemplate),
+    syncResponsePath: cleanText(row.syncResponsePath),
+    syncDomainField: cleanText(row.syncDomainField),
     defaultNameservers: normalizeList(row.defaultNameservers),
     supportsSync: Boolean(row.supportsSync),
     builtin: Boolean(row.builtin),
@@ -299,6 +339,24 @@ function normalizeStrategy(value: unknown): RegistrarSyncStrategy {
     return value;
   }
   return "manual";
+}
+
+function normalizeMethod(value: unknown): RegistrarSyncMethod {
+  return value === "POST" ? "POST" : "GET";
+}
+
+function normalizeHeaders(value: unknown): RegistrarSyncHeader[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((header): RegistrarSyncHeader | null => {
+      const source = header as Partial<RegistrarSyncHeader>;
+      const key = cleanText(source.key);
+      const headerValue = cleanText(source.value);
+      if (!key || !headerValue || /[\r\n:]/.test(key)) return null;
+      return { key, value: headerValue };
+    })
+    .filter((header): header is RegistrarSyncHeader => Boolean(header))
+    .slice(0, 20);
 }
 
 function normalizeFields(value: unknown): RegistrarCredentialField[] {
@@ -360,13 +418,24 @@ export async function upsertRegistrarCatalogItem(patch: RegistrarCatalogPatch) {
   const id = normalizeId(patch.id || patch.shortName || patch.name);
   const existing = store.items[id] ?? BUILTIN_REGISTRARS.find((item) => item.id === id);
   const stamp = now();
+  const builtin = existing?.builtin ?? false;
+  const syncEndpointUrl =
+    patch.syncEndpointUrl !== undefined
+      ? cleanText(patch.syncEndpointUrl)
+      : existing?.syncEndpointUrl;
+  const supportsSync = builtin
+    ? true
+    : patch.syncEndpointUrl !== undefined
+      ? Boolean(syncEndpointUrl)
+      : Boolean(existing?.supportsSync);
   const next = migrateRegistrar({
     ...existing,
     ...patch,
     id,
     shortName: patch.shortName || existing?.shortName || patch.name,
-    supportsSync: existing?.supportsSync ?? false,
-    builtin: existing?.builtin ?? false,
+    syncEndpointUrl,
+    supportsSync,
+    builtin,
     active: patch.active ?? existing?.active ?? true,
     deletedAt: patch.active === false ? existing?.deletedAt || stamp : undefined,
     createdAt: existing?.createdAt || stamp,

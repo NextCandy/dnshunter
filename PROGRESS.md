@@ -108,7 +108,27 @@ npm run build
 
 ## 下一步建议
 
-1. 为自定义注册商增加真实同步适配器接口。
+## 2026-07-08 自定义注册商同步接口阶段
+
+- 已补齐线上后台登录验证：
+  - `https://dshunter.com/unlock` 使用后台邮箱和站点密码登录后跳转到 `/dashboard`。
+  - 刷新 `/dashboard` 后仍保持登录态，标题为“指挥台 · dshunter”，未回跳 `/unlock`。
+  - 浏览器控制台无相关错误；本轮截图接口在浏览器工具层超时，DOM/URL/标题证据已验证登录成功。
+- 已实现自定义注册商 REST 同步适配器接口：
+  - 注册商目录新增 `syncEndpointUrl`、`syncMethod`、`syncHeaders`、`syncBodyTemplate`、`syncResponsePath`、`syncDomainField`。
+  - 自定义 REST 端点支持 `${API_TOKEN}` 形式引用已加密保存的凭证字段，凭证仍只在服务端读取。
+  - 同步响应支持根数组、`domains/items/results`、`data.domains/data.items/data.results`，也可手动配置响应数组路径。
+  - 域名字段支持默认 `domain/name/fqdn/domainName`，也可手动配置字段路径。
+  - 域名持久化和同步任务记录已支持动态注册商 ID，不再局限于内置枚举。
+  - 域名列表页来源字典随注册商目录动态补齐，后续自定义注册商配置端点后可出现在“注册商连接”区域。
+- 本地验证：
+  - `npm run typecheck` 通过。
+  - 定向 ESLint 通过。
+  - `npm run build` 通过；仅有既有 TanStack `inputValidator()` 弃用和 Vite tsconfig paths 提示。
+  - 本地 `/settings` 新增注册商弹窗已渲染 REST URL、Header、POST Body、响应路径、域名字段；无控制台错误。
+  - 本地 `/domains` 注册商连接区域正常渲染；无控制台错误。
+
+1. 为具体自定义注册商配置 REST 同步端点，并用真实返回数据做一次端到端同步实测。
 2. 单独复核线上后台登录自动化，并确认浏览器后台设置页可登录进入。
 3. 清理全仓历史 CRLF/Prettier 问题，使 `npm run lint` 可以作为全量门禁。
 4. 继续完善移动端后台表单和域名列表密集信息展示。

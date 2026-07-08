@@ -2,15 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-export type PersistedRegistrar =
-  | "spaceship"
-  | "dynadot"
-  | "porkbun"
-  | "cf-registrar"
-  | "namecheap"
-  | "aliyun"
-  | "tencent"
-  | "west";
+export type PersistedRegistrar = string;
 
 export type PersistedRegistrarDomain = {
   id: string;

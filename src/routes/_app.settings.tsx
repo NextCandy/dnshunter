@@ -10,6 +10,8 @@ import {
   type RegistrarCatalogItem,
   type RegistrarCatalogPatch,
   type RegistrarCredentialField,
+  type RegistrarSyncHeader,
+  type RegistrarSyncMethod,
   type RegistrarSyncStrategy,
 } from "@/lib/registrar-catalog.functions";
 import { cn } from "@/lib/utils";
@@ -302,6 +304,7 @@ function RegistrarEditor({
   const [draft, setDraft] = useState<RegistrarCatalogPatch>(() => emptyRegistrarDraft());
   const [fieldsText, setFieldsText] = useState("");
   const [nameserversText, setNameserversText] = useState("");
+  const [headersText, setHeadersText] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -319,6 +322,12 @@ function RegistrarEditor({
             brandColor: source.brandColor,
             credentialFields: source.credentialFields,
             syncStrategy: source.syncStrategy,
+            syncMethod: source.syncMethod,
+            syncEndpointUrl: source.syncEndpointUrl ?? "",
+            syncHeaders: source.syncHeaders,
+            syncBodyTemplate: source.syncBodyTemplate ?? "",
+            syncResponsePath: source.syncResponsePath ?? "",
+            syncDomainField: source.syncDomainField ?? "",
             defaultNameservers: source.defaultNameservers,
             active: source.active,
           }
@@ -334,6 +343,9 @@ function RegistrarEditor({
         .join("\n"),
     );
     setNameserversText((source?.defaultNameservers ?? []).join("\n"));
+    setHeadersText(
+      (source?.syncHeaders ?? []).map((header) => `${header.key}: ${header.value}`).join("\n"),
+    );
   }, [row]);
 
   const open = Boolean(row);
@@ -350,6 +362,7 @@ function RegistrarEditor({
         data: {
           ...draft,
           credentialFields: parseCredentialFields(fieldsText),
+          syncHeaders: parseHeaders(headersText),
           defaultNameservers: parseLines(nameserversText),
         },
       });
@@ -453,6 +466,26 @@ function RegistrarEditor({
               </SelectContent>
             </Select>
           </label>
+          <label className="space-y-1">
+            <span className="text-xs text-muted-foreground">同步请求方法</span>
+            <Select
+              value={draft.syncMethod ?? "GET"}
+              onValueChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  syncMethod: value as RegistrarSyncMethod,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="GET">GET</SelectItem>
+                <SelectItem value="POST">POST</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
           <label className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
             <span>
               <span className="block text-sm font-medium">启用来源</span>
@@ -465,6 +498,52 @@ function RegistrarEditor({
               }
             />
           </label>
+          <FieldInput
+            label="REST 同步端点 URL"
+            value={draft.syncEndpointUrl ?? ""}
+            className="sm:col-span-2"
+            placeholder="https://api.example.com/domains?token=${API_TOKEN}"
+            onChange={(value) => setDraft((current) => ({ ...current, syncEndpointUrl: value }))}
+          />
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-xs text-muted-foreground">REST Header 模板</span>
+            <Textarea
+              value={headersText}
+              onChange={(event) => setHeadersText(event.target.value)}
+              rows={3}
+              placeholder="Authorization: Bearer ${API_TOKEN}"
+              className="font-mono text-xs"
+            />
+            <span className="block text-[11px] text-muted-foreground">
+              每行一个 Header，值里可用 ${"{API_TOKEN}"} 形式引用上方凭证字段。
+            </span>
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-xs text-muted-foreground">POST Body 模板</span>
+            <Textarea
+              value={draft.syncBodyTemplate ?? ""}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, syncBodyTemplate: event.target.value }))
+              }
+              rows={3}
+              placeholder='{"apiKey":"${API_KEY}"}'
+              className="font-mono text-xs"
+            />
+          </label>
+          <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
+            <FieldInput
+              label="响应数组路径"
+              value={draft.syncResponsePath ?? ""}
+              placeholder="data.domains"
+              onChange={(value) => setDraft((current) => ({ ...current, syncResponsePath: value }))}
+            />
+            <FieldInput
+              label="域名字段"
+              value={draft.syncDomainField ?? ""}
+              placeholder="domain"
+              onChange={(value) => setDraft((current) => ({ ...current, syncDomainField: value }))}
+            />
+          </div>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-xs text-muted-foreground">API 字段定义</span>
             <Textarea
@@ -813,6 +892,12 @@ function emptyRegistrarDraft(): RegistrarCatalogPatch {
     brandColor: "#3b82f6",
     credentialFields: [],
     syncStrategy: "manual",
+    syncMethod: "GET",
+    syncEndpointUrl: "",
+    syncHeaders: [],
+    syncBodyTemplate: "",
+    syncResponsePath: "",
+    syncDomainField: "",
     defaultNameservers: [],
     active: true,
   };
@@ -823,6 +908,22 @@ function parseLines(text: string) {
     .split(/[\n,]/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function parseHeaders(text: string): RegistrarSyncHeader[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const index = line.indexOf(":");
+      if (index < 1) return null;
+      const key = line.slice(0, index).trim();
+      const value = line.slice(index + 1).trim();
+      if (!key || !value) return null;
+      return { key, value };
+    })
+    .filter((header): header is RegistrarSyncHeader => Boolean(header));
 }
 
 function parseCredentialFields(text: string): RegistrarCredentialField[] {
