@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireGate } from "./auth-middleware";
-import { SECRET_KEYS, getSecretPresence, setSecrets, type SecretKey } from "./secrets.server";
+import { getSecretPresence, setSecrets } from "./secrets.server";
 
 // 返回每个凭证字段「是否已配置」（文件或环境变量），不含明文。
 export const getSecretsStatus = createServerFn({ method: "GET" })
@@ -12,11 +12,10 @@ export const getSecretsStatus = createServerFn({ method: "GET" })
 // 保存凭证：入参为 { 字段名: 值 }。非空 = 设置，空串 = 清除。仅白名单字段生效。
 export const saveSecrets = createServerFn({ method: "POST" })
   .middleware([requireGate])
-  .inputValidator((d: Partial<Record<SecretKey, string>>) => {
+  .inputValidator((d: Record<string, unknown>) => {
     const clean: Record<string, string> = {};
-    for (const k of SECRET_KEYS) {
-      const v = (d as Record<string, unknown>)[k];
-      if (typeof v === "string") clean[k] = v;
+    for (const [key, v] of Object.entries(d)) {
+      if (typeof v === "string") clean[key] = v;
     }
     return clean;
   })

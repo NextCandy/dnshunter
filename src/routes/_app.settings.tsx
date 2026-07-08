@@ -529,7 +529,7 @@ function CredentialAccordion({
       <div className="border-b bg-muted/25 p-5">
         <div className="font-display text-lg font-semibold">API 凭证</div>
         <p className="mt-1 text-sm text-muted-foreground">
-          按注册商折叠管理凭证。自定义来源会先保存字段定义，真实同步适配器接入后即可启用。
+          按注册商折叠管理凭证。自定义来源的凭证会加密保存；自动同步需接入对应适配器。
         </p>
       </div>
       <Accordion type="multiple" className="px-5">
@@ -582,7 +582,7 @@ function CredentialPanel({
   const [saving, setSaving] = useState(false);
 
   const configured = isConfigured(row, presence);
-  const editable = row.supportsSync;
+  const editable = row.credentialFields.length > 0;
   const hasInput = Object.values(vals).some((value) => value.trim() !== "");
 
   async function save() {
@@ -627,7 +627,12 @@ function CredentialPanel({
     <div className="space-y-4">
       {!editable && (
         <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-          该来源的字段定义已保存；真实 API 同步适配器接入后，凭证保存会随之启用。
+          该来源暂无 API 字段定义。请先在注册商来源里添加字段，再保存凭证。
+        </div>
+      )}
+      {editable && !row.supportsSync && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+          该来源尚未接入自动同步适配器；凭证会加密保存，后续适配器上线后可直接使用。
         </div>
       )}
 

@@ -32,6 +32,7 @@ export const SECRET_KEYS = [
   "WEST_API_PASSWORD",
 ] as const;
 export type SecretKey = (typeof SECRET_KEYS)[number];
+type SecretPresence = Record<string, boolean>;
 
 // 持久化文件路径。容器内 WORKDIR=/app → /app/data/secrets.json（挂载卷）；
 // 本地开发 → <项目>/data/secrets.json。可用 SECRETS_FILE 覆盖。
@@ -73,9 +74,12 @@ async function readStore(): Promise<Record<string, string>> {
     const txt = await readFile(FILE, "utf8");
     const parsed = JSON.parse(txt);
     cache = parsed && typeof parsed.data === "string" ? JSON.parse(decrypt(parsed.data)) : {};
-  } catch (e: any) {
+  } catch (e: unknown) {
     // 文件不存在属正常（尚未保存过任何凭证）；其它错误打日志但不阻断。
-    if (e?.code !== "ENOENT") console.error("[secrets] 读取失败:", e?.message);
+    const code =
+      typeof e === "object" && e && "code" in e ? (e as { code?: unknown }).code : undefined;
+    const message = e instanceof Error ? e.message : String(e);
+    if (code !== "ENOENT") console.error("[secrets] 读取失败:", message);
     cache = {};
   }
   return cache!;
@@ -97,12 +101,40 @@ export async function getSecret(name: SecretKey): Promise<string | undefined> {
   return env && env !== "" ? env : undefined;
 }
 
+function normalizeSecretKey(name: string) {
+  return name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, "_")
+    .slice(0, 64);
+}
+
+async function getAllowedSecretKeys(): Promise<Set<string>> {
+  const keys = new Set<string>(SECRET_KEYS);
+  try {
+    const { listRegistrarCatalog } = await import("./registrar-catalog.server");
+    const registrars = await listRegistrarCatalog({ includeDeleted: true });
+    for (const registrar of registrars) {
+      for (const field of registrar.credentialFields) {
+        const key = normalizeSecretKey(field.key);
+        if (key) keys.add(key);
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[secrets] 动态凭证白名单读取失败:", message);
+  }
+  return keys;
+}
+
 // 批量保存：非空字符串 = 设置；空字符串 = 删除（清除，回退到 env / 未配置）。
 // 只接受白名单字段，其余忽略。
 export async function setSecrets(patch: Record<string, string>): Promise<void> {
   const store = { ...(await readStore()) };
-  for (const k of SECRET_KEYS) {
-    const v = patch[k];
+  const allowed = await getAllowedSecretKeys();
+  for (const [rawKey, v] of Object.entries(patch)) {
+    const k = normalizeSecretKey(rawKey);
+    if (!allowed.has(k)) continue;
     if (typeof v !== "string") continue;
     if (v === "") delete store[k];
     else store[k] = v;
@@ -111,10 +143,11 @@ export async function setSecrets(patch: Record<string, string>): Promise<void> {
 }
 
 // 每个字段是否已配置（文件或 env 有值），用于 UI 展示，不泄漏明文。
-export async function getSecretPresence(): Promise<Record<SecretKey, boolean>> {
+export async function getSecretPresence(): Promise<SecretPresence> {
   const store = await readStore();
-  const out = {} as Record<SecretKey, boolean>;
-  for (const k of SECRET_KEYS) {
+  const allowed = await getAllowedSecretKeys();
+  const out: SecretPresence = {};
+  for (const k of allowed) {
     const fromFile = store[k];
     const fromEnv = process.env[k];
     out[k] = Boolean((fromFile && fromFile !== "") || (fromEnv && fromEnv !== ""));
