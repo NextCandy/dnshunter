@@ -16,9 +16,7 @@ function cleanNs(ns: string) {
 
 export function classifyNameservers(nameservers: string[]): NameserverStatus {
   if (nameservers.length === 0) return "unknown";
-  return nameservers.some((ns) => cleanNs(ns).endsWith(".cloudflare.com"))
-    ? "cloudflare"
-    : "other";
+  return nameservers.some((ns) => cleanNs(ns).endsWith(".cloudflare.com")) ? "cloudflare" : "other";
 }
 
 // NS 后缀 → 提供商标签（用于前端展示"当前 NS 托管在哪家"）。
@@ -109,9 +107,8 @@ export async function resolveDomainsNameservers(
     }
   }
 
-  const workers = Array.from(
-    { length: Math.min(concurrency, Math.max(domains.length, 1)) },
-    () => worker(),
+  const workers = Array.from({ length: Math.min(concurrency, Math.max(domains.length, 1)) }, () =>
+    worker(),
   );
   await Promise.all(workers);
   return out;

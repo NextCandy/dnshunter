@@ -49,7 +49,9 @@ function BindPage() {
   const tokens = useQuery({ queryKey: ["tokens"], queryFn: () => tokensFn() });
 
   const [accountId, setAccountId] = useState<string>("");
-  const [updateNS, setUpdateNS] = useState<"" | "spaceship" | "dynadot" | "porkbun" | "cf-registrar">("");
+  const [updateNS, setUpdateNS] = useState<
+    "" | "spaceship" | "dynadot" | "porkbun" | "cf-registrar"
+  >("");
   const [cfRegAccountId, setCfRegAccountId] = useState<string>("");
   const [activationCheck, setActivationCheck] = useState(true);
 
@@ -114,11 +116,13 @@ function BindPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {!accounts.isLoading && !accounts.error && (accounts.data?.accounts?.length ?? 0) === 0 && (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    没有可用账户：请确认 Token 具有 Account Settings:Read 权限。
-                  </p>
-                )}
+                {!accounts.isLoading &&
+                  !accounts.error &&
+                  (accounts.data?.accounts?.length ?? 0) === 0 && (
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      没有可用账户：请确认 Token 具有 Account Settings:Read 权限。
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -126,7 +130,11 @@ function BindPage() {
                 <Select
                   value={updateNS || "__none"}
                   onValueChange={(v) =>
-                    setUpdateNS(v === "__none" ? "" : (v as "spaceship" | "dynadot" | "porkbun" | "cf-registrar"))
+                    setUpdateNS(
+                      v === "__none"
+                        ? ""
+                        : (v as "spaceship" | "dynadot" | "porkbun" | "cf-registrar"),
+                    )
                   }
                 >
                   <SelectTrigger>
@@ -173,7 +181,8 @@ function BindPage() {
                 </div>
                 <div className="text-destructive/90">{(accounts.error as Error).message}</div>
                 <div className="mt-1.5 text-muted-foreground">
-                  列出账户需要 Token 具有 Account Settings:Read 权限；若 Token 未配置或已失效，请先到设置页处理。
+                  列出账户需要 Token 具有 Account Settings:Read 权限；若 Token
+                  未配置或已失效，请先到设置页处理。
                 </div>
                 <Button asChild size="sm" variant="outline" className="mt-2">
                   <Link to="/settings">
@@ -238,7 +247,8 @@ function BindPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const esc = (v: string) => (/[,"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+                    const esc = (v: string) =>
+                      /[,"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
                     const rows = results.map((r) =>
                       [
                         r.domain,
@@ -252,7 +262,10 @@ function BindPage() {
                     );
                     downloadBlob(
                       "bind-results.csv",
-                      ["domain,zone,ns_update,activation,zone_status,cloudflare_ns,error", ...rows].join("\n"),
+                      [
+                        "domain,zone,ns_update,activation,zone_status,cloudflare_ns,error",
+                        ...rows,
+                      ].join("\n"),
                       "text/csv",
                     );
                   }}
@@ -270,7 +283,9 @@ function BindPage() {
                       <th className="p-2 text-left font-medium text-muted-foreground">NS 更新</th>
                       <th className="p-2 text-left font-medium text-muted-foreground">激活</th>
                       <th className="p-2 text-left font-medium text-muted-foreground">Zone 状态</th>
-                      <th className="p-2 text-left font-medium text-muted-foreground">Cloudflare NS</th>
+                      <th className="p-2 text-left font-medium text-muted-foreground">
+                        Cloudflare NS
+                      </th>
                       <th className="p-2 text-left font-medium text-muted-foreground">错误</th>
                     </tr>
                   </thead>
@@ -297,7 +312,9 @@ function BindPage() {
                                 size="icon"
                                 className="size-6"
                                 onClick={async () => {
-                                  await navigator.clipboard.writeText((r.nameServers || []).join("\n"));
+                                  await navigator.clipboard.writeText(
+                                    (r.nameServers || []).join("\n"),
+                                  );
                                   toast.success("NS 已复制");
                                 }}
                                 aria-label="复制 NS"
@@ -356,7 +373,10 @@ function DomainSetEditor({ domains, disabled }: { domains: string[]; disabled: b
     const added = merged.length - domains.length;
     setDomains(merged);
     setInput("");
-    if (added > 0) toast.success(`已添加 ${added} 个域名${parsed.length - added > 0 ? `（${parsed.length - added} 个重复已忽略）` : ""}`);
+    if (added > 0)
+      toast.success(
+        `已添加 ${added} 个域名${parsed.length - added > 0 ? `（${parsed.length - added} 个重复已忽略）` : ""}`,
+      );
     else toast.info("这些域名已在列表中");
   };
 
@@ -402,7 +422,13 @@ function DomainSetEditor({ domains, disabled }: { domains: string[]; disabled: b
             className="font-mono text-sm"
             disabled={disabled}
           />
-          <Button variant="outline" size="icon" onClick={addFromInput} disabled={disabled || !input.trim()} aria-label="添加域名">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={addFromInput}
+            disabled={disabled || !input.trim()}
+            aria-label="添加域名"
+          >
             <Plus className="size-4" />
           </Button>
         </div>

@@ -57,7 +57,10 @@ const rowSchema = z.object({
   type: z.enum(CF_TYPES, { message: `type 必须是 ${CF_TYPES.join("/")}` }),
   name: z.string().min(1, "name 不能为空"),
   content: z.string().min(1, "content 不能为空"),
-  ttl: z.number().int().refine((v) => v === 1 || (v >= 60 && v <= 86400), "ttl 必须为 1(auto) 或 60-86400"),
+  ttl: z
+    .number()
+    .int()
+    .refine((v) => v === 1 || (v >= 60 && v <= 86400), "ttl 必须为 1(auto) 或 60-86400"),
   proxied: z.boolean(),
   priority: z.number().int().min(0).max(65535).optional(),
 });
@@ -94,12 +97,12 @@ export function parseAndValidateCsv(text: string): CsvParseResult {
       type: (raw.type || "").toUpperCase().trim(),
       name: (raw.name || "@").trim(),
       content: (raw.content || "").trim(),
-      ttl: raw.ttl == null || raw.ttl === "" || String(raw.ttl).toLowerCase() === "auto" ? 1 : Number(raw.ttl),
+      ttl:
+        raw.ttl == null || raw.ttl === "" || String(raw.ttl).toLowerCase() === "auto"
+          ? 1
+          : Number(raw.ttl),
       proxied: ["true", "1", "yes", "y"].includes(String(raw.proxied ?? "").toLowerCase()),
-      priority:
-        raw.priority == null || raw.priority === ""
-          ? undefined
-          : Number(raw.priority),
+      priority: raw.priority == null || raw.priority === "" ? undefined : Number(raw.priority),
     };
     const check = rowSchema.safeParse(parsed);
     if (!check.success) {
@@ -134,7 +137,9 @@ example.com,MX,@,mail.example.com,3600,false,10
 example.com,TXT,@,"v=spf1 include:_spf.google.com ~all",3600,false,
 `;
 
-export function toCsv(records: (ValidatedRecord | (Omit<ValidatedRecord, "domain"> & { domain?: string }))[]): string {
+export function toCsv(
+  records: (ValidatedRecord | (Omit<ValidatedRecord, "domain"> & { domain?: string }))[],
+): string {
   const header = "domain,type,name,content,ttl,proxied,priority";
   const rows = records.map((r) => {
     const esc = (v: any) => {

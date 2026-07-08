@@ -17,10 +17,7 @@ export async function cfToken(): Promise<string> {
   return t;
 }
 
-export async function cf<T = any>(
-  path: string,
-  init: RequestInit = {},
-): Promise<CFResp<T>> {
+export async function cf<T = any>(path: string, init: RequestInit = {}): Promise<CFResp<T>> {
   const token = await cfToken();
   let res: Response;
   try {

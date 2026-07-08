@@ -7,13 +7,7 @@
  */
 export function DeckMark({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-      focusable="false"
-    >
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true" focusable="false">
       {/* 外环 / 内环：雷达 */}
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" opacity="0.3" />
       <circle cx="12" cy="12" r="5.2" stroke="currentColor" strokeWidth="1.4" opacity="0.55" />

@@ -6,8 +6,7 @@ const BASE = "https://api.porkbun.com/api/json/v3";
 async function creds() {
   const apiKey = await getSecret("PORKBUN_API_KEY");
   const secretApiKey = await getSecret("PORKBUN_SECRET_API_KEY");
-  if (!apiKey || !secretApiKey)
-    throw new Error("PORKBUN_API_KEY / PORKBUN_SECRET_API_KEY 未配置");
+  if (!apiKey || !secretApiKey) throw new Error("PORKBUN_API_KEY / PORKBUN_SECRET_API_KEY 未配置");
   return { apiKey, secretApiKey };
 }
 

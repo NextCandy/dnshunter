@@ -47,13 +47,7 @@ export function EmptyState({
   return <Card className="border-border/60 bg-card/60 p-6 backdrop-blur">{content}</Card>;
 }
 
-function ActionButton({
-  action,
-  variant,
-}: {
-  action: Action;
-  variant?: "outline";
-}) {
+function ActionButton({ action, variant }: { action: Action; variant?: "outline" }) {
   if (action.href) {
     return (
       <Button asChild variant={variant}>

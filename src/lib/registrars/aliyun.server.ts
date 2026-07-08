@@ -48,7 +48,9 @@ async function acsCall(action: string, params: Record<string, string>): Promise<
   const canonicalHeaders = signedHeaderNames.map((h) => `${h}:${headers[h]}\n`).join("");
   const signedHeaders = signedHeaderNames.join(";");
 
-  const canonicalRequest = ["POST", "/", query, canonicalHeaders, signedHeaders, bodyHash].join("\n");
+  const canonicalRequest = ["POST", "/", query, canonicalHeaders, signedHeaders, bodyHash].join(
+    "\n",
+  );
   const stringToSign = `ACS3-HMAC-SHA256\n${sha256Hex(canonicalRequest)}`;
   const signature = hex(createHmac("sha256", secret).update(stringToSign).digest());
   const auth = `ACS3-HMAC-SHA256 Credential=${id},SignedHeaders=${signedHeaders},Signature=${signature}`;

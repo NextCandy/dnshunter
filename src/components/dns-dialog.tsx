@@ -90,12 +90,7 @@ export function DnsDialog({
             </div>
 
             <div className="flex items-center justify-end gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => q.refetch()}
-                disabled={q.isFetching}
-              >
+              <Button variant="ghost" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
                 <RefreshCw className={"mr-1 size-3.5 " + (q.isFetching ? "animate-spin" : "")} />
                 重新查询
               </Button>

@@ -36,8 +36,7 @@ export type ManualDomainPatch = {
 
 type Store = { v: 1; domains: Record<string, ManualDomain> };
 
-const FILE =
-  process.env.MANUAL_DOMAINS_FILE || join(process.cwd(), "data", "manual-domains.json");
+const FILE = process.env.MANUAL_DOMAINS_FILE || join(process.cwd(), "data", "manual-domains.json");
 
 let cache: Store | null = null;
 
@@ -83,9 +82,7 @@ function migrate(row: Partial<ManualDomain>): ManualDomain {
     domain: normDomain(row.domain),
     registrar: cleanText(row.registrar),
     dnsManageUrl: cleanText(row.dnsManageUrl),
-    nameservers: Array.isArray(row.nameservers)
-      ? row.nameservers.filter(Boolean).map(String)
-      : [],
+    nameservers: Array.isArray(row.nameservers) ? row.nameservers.filter(Boolean).map(String) : [],
     nsStatus: row.nsStatus ?? "unknown",
     nsProvider: cleanText(row.nsProvider),
     registeredAt: cleanDate(row.registeredAt),

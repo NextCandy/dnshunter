@@ -40,7 +40,11 @@ export async function westListDomains(): Promise<string[]> {
   let page = 1;
   const size = 100;
   while (true) {
-    const j = await westCall("/domain/", { act: "getdomains", pageno: String(page), limit: String(size) });
+    const j = await westCall("/domain/", {
+      act: "getdomains",
+      pageno: String(page),
+      limit: String(size),
+    });
     const items: any[] = j?.data?.items || j?.data || [];
     for (const it of items) {
       const n = it.domain || it.Domain || it.name;

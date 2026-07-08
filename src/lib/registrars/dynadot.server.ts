@@ -38,9 +38,7 @@ export async function dynadotSetNS(domain: string, ns: string[]): Promise<void> 
   const res = await fetch(`${BASE}?${params.toString()}`);
   if (!res.ok) throw new Error(`Dynadot setNS ${res.status}`);
   const j: any = await res.json();
-  const status =
-    j?.SetNsResponse?.ResponseCode ??
-    j?.set_ns_response?.response_code;
+  const status = j?.SetNsResponse?.ResponseCode ?? j?.set_ns_response?.response_code;
   if (status !== undefined && Number(status) !== 0) {
     throw new Error(`Dynadot setNS failed: ${JSON.stringify(j)}`);
   }

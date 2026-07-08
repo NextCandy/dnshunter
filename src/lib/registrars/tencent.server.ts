@@ -29,14 +29,9 @@ async function tcCall(action: string, payload: Record<string, any>): Promise<any
   const date = new Date(ts * 1000).toISOString().slice(0, 10);
   const canonicalHeaders = `content-type:application/json; charset=utf-8\nhost:${HOST}\n`;
   const signedHeaders = "content-type;host";
-  const canonicalRequest = [
-    "POST",
-    "/",
-    "",
-    canonicalHeaders,
-    signedHeaders,
-    sha256Hex(body),
-  ].join("\n");
+  const canonicalRequest = ["POST", "/", "", canonicalHeaders, signedHeaders, sha256Hex(body)].join(
+    "\n",
+  );
   const credScope = `${date}/${SERVICE}/tc3_request`;
   const stringToSign = `TC3-HMAC-SHA256\n${ts}\n${credScope}\n${sha256Hex(canonicalRequest)}`;
   const secretDate = hmac("TC3" + key, date);

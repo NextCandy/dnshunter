@@ -19,7 +19,12 @@ export const getCfHealth = createServerFn({ method: "GET" })
     const cf = await import("./registrars/cloudflare.server");
     const tokenStatus = await cf.cfVerifyToken();
     if (tokenStatus !== "active") {
-      return { tokenStatus, zoneCount: null as number | null, activeZones: null as number | null, error: null as string | null };
+      return {
+        tokenStatus,
+        zoneCount: null as number | null,
+        activeZones: null as number | null,
+        error: null as string | null,
+      };
     }
     try {
       const zones = await cf.cfListZones();
@@ -445,10 +450,7 @@ export const previewDeleteRecords = createServerFn({ method: "POST" })
         if (data.filter.type && r.type !== data.filter.type) continue;
         if (data.filter.nameContains && !String(r.name).includes(data.filter.nameContains))
           continue;
-        if (
-          data.filter.contentContains &&
-          !String(r.content).includes(data.filter.contentContains)
-        )
+        if (data.filter.contentContains && !String(r.content).includes(data.filter.contentContains))
           continue;
         matches.push({
           domain,
@@ -465,10 +467,19 @@ export const previewDeleteRecords = createServerFn({ method: "POST" })
 
 export const executeDeleteRecords = createServerFn({ method: "POST" })
   .middleware([requireGate])
-  .inputValidator((d: { items: { zoneId: string; id: string; domain: string; name: string; type: string }[] }) => d)
+  .inputValidator(
+    (d: { items: { zoneId: string; id: string; domain: string; name: string; type: string }[] }) =>
+      d,
+  )
   .handler(async ({ data }) => {
     const cf = await import("./registrars/cloudflare.server");
-    const results: { domain: string; name: string; type: string; status: "ok" | "error"; error?: string }[] = [];
+    const results: {
+      domain: string;
+      name: string;
+      type: string;
+      status: "ok" | "error";
+      error?: string;
+    }[] = [];
     for (const it of data.items) {
       try {
         const r = await cf.cfDeleteDNS(it.zoneId, it.id);
@@ -480,7 +491,13 @@ export const executeDeleteRecords = createServerFn({ method: "POST" })
           error: r.success ? undefined : cf.cfErr(r as any),
         });
       } catch (e: any) {
-        results.push({ domain: it.domain, name: it.name, type: it.type, status: "error", error: e.message });
+        results.push({
+          domain: it.domain,
+          name: it.name,
+          type: it.type,
+          status: "error",
+          error: e.message,
+        });
       }
       await sleep(60);
     }

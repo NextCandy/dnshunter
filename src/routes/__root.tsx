@@ -28,9 +28,7 @@ function NotFoundComponent() {
         </div>
         <h1 className="mt-2 font-display text-6xl font-bold tracking-tight text-foreground">404</h1>
         <h2 className="mt-3 text-lg font-semibold text-foreground">页面不存在</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          你访问的页面不存在，或已经被移动。
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">你访问的页面不存在，或已经被移动。</p>
         <div className="mt-6">
           <Link
             to="/"

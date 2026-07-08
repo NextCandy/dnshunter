@@ -26,22 +26,22 @@ git push -u origin main
 
 **必填：**
 
-| 变量 | 说明 |
-| --- | --- |
-| `SESSION_SECRET` | 32+ 位随机字符串，用来加密 Session Cookie |
-| `SITE_PASSWORD` | 打开站点需要输入的共享密码 |
-| `CLOUDFLARE_API_TOKEN` | 权限：Account:Read、Zone:Edit、DNS:Edit |
+| 变量                   | 说明                                      |
+| ---------------------- | ----------------------------------------- |
+| `SESSION_SECRET`       | 32+ 位随机字符串，用来加密 Session Cookie |
+| `SITE_PASSWORD`        | 打开站点需要输入的共享密码                |
+| `CLOUDFLARE_API_TOKEN` | 权限：Account:Read、Zone:Edit、DNS:Edit   |
 
 **注册商（按需配置，未配置的入口会置灰）：**
 
-| 注册商 | 变量 |
-| --- | --- |
-| Spaceship | `SPACESHIP_API_KEY`, `SPACESHIP_API_SECRET` |
-| Dynadot | `DYNADOT_API_KEY` |
+| 注册商    | 变量                                                                                   |
+| --------- | -------------------------------------------------------------------------------------- |
+| Spaceship | `SPACESHIP_API_KEY`, `SPACESHIP_API_SECRET`                                            |
+| Dynadot   | `DYNADOT_API_KEY`                                                                      |
 | Namecheap | `NAMECHEAP_API_USER`, `NAMECHEAP_API_KEY`, `NAMECHEAP_USERNAME`, `NAMECHEAP_CLIENT_IP` |
-| 阿里云 | `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET` |
-| 腾讯云 | `TENCENT_SECRET_ID`, `TENCENT_SECRET_KEY` |
-| 西部数码 | `WEST_USERNAME`, `WEST_API_PASSWORD` |
+| 阿里云    | `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`                                     |
+| 腾讯云    | `TENCENT_SECRET_ID`, `TENCENT_SECRET_KEY`                                              |
+| 西部数码  | `WEST_USERNAME`, `WEST_API_PASSWORD`                                                   |
 
 添加后勾选 **Production / Preview / Development** 三个环境。
 

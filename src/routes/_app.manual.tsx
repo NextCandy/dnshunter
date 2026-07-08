@@ -318,8 +318,7 @@ function ManualDomainsPage() {
                     <td className="p-3">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-xs">
-                          {row.nsProvider ??
-                            (row.nsStatus === "cloudflare" ? "Cloudflare" : "—")}
+                          {row.nsProvider ?? (row.nsStatus === "cloudflare" ? "Cloudflare" : "—")}
                         </span>
                         {row.dnsManageUrl && (
                           <a
@@ -618,8 +617,7 @@ function BatchEditDialog({
     onError: (e) => toast.error(e instanceof Error ? e.message : "批量更新失败"),
   });
 
-  const nothingToApply =
-    !registrar.trim() && !dnsManageUrl.trim() && !group.trim() && !tags.trim();
+  const nothingToApply = !registrar.trim() && !dnsManageUrl.trim() && !group.trim() && !tags.trim();
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -646,10 +644,18 @@ function BatchEditDialog({
             />
           </Field>
           <Field label="分组">
-            <Input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="统一分组…" />
+            <Input
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
+              placeholder="统一分组…"
+            />
           </Field>
           <Field label="标签（逗号分隔，将覆盖原标签）">
-            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="投资, 已备案" />
+            <Input
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="投资, 已备案"
+            />
           </Field>
         </div>
         <div className="mt-2 flex justify-end gap-2">
@@ -700,7 +706,8 @@ function BackupDialog({
           <DialogTitle>备份与恢复</DialogTitle>
         </DialogHeader>
         <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          每次改动前会自动备份，保留最近 20 份。选择一份可恢复到该时间点（恢复前的当前状态也会被再次备份）。
+          每次改动前会自动备份，保留最近 20
+          份。选择一份可恢复到该时间点（恢复前的当前状态也会被再次备份）。
         </p>
         <div className="max-h-[50vh] space-y-2 overflow-auto">
           {q.isPending ? (
@@ -725,9 +732,7 @@ function BackupDialog({
                   className="gap-1.5"
                   disabled={restore.isPending}
                   onClick={() => {
-                    if (
-                      window.confirm(`恢复到此备份（${b.count} 个域名）？当前数据会先自动备份。`)
-                    )
+                    if (window.confirm(`恢复到此备份（${b.count} 个域名）？当前数据会先自动备份。`))
                       restore.mutate(b.file);
                   }}
                 >

@@ -28,9 +28,7 @@ const REGISTRAR_LABELS: Record<string, string> = {
 
 export const listPublicDomains = createServerFn({ method: "GET" }).handler(
   async (): Promise<PublicDomain[]> => {
-    const { listPersistedRegistrarDomains } = await import(
-      "./registrar-domain-store.server"
-    );
+    const { listPersistedRegistrarDomains } = await import("./registrar-domain-store.server");
     const rows = await listPersistedRegistrarDomains();
     return rows.map((r) => ({
       domain: r.domain,
