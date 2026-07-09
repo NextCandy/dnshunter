@@ -1,8 +1,10 @@
 import { createFileRoute, useRouter, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { motion } from "motion/react";
 import { unlockSite } from "@/lib/gate.functions";
+import { listPublicDomainAssets } from "@/lib/public.functions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,12 +26,26 @@ export const Route = createFileRoute("/unlock")({
 function UnlockPage() {
   const router = useRouter();
   const unlock = useServerFn(unlockSite);
+  const listAssets = useServerFn(listPublicDomainAssets);
+  const assetsQuery = useQuery({
+    queryKey: ["public-domain-assets", "unlock"],
+    queryFn: () => listAssets(),
+    staleTime: 60_000,
+  });
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
   const [remember, setRemember] = useState(true);
+  const rows = assetsQuery.data?.rows ?? [];
+  const registrarCount = new Set(rows.map((row) => row.registrar)).size;
+  const cloudflareCount = rows.filter((row) => row.nsStatus === "cloudflare").length;
+  const readouts = [
+    { value: rows.length, label: "域名" },
+    { value: cloudflareCount, label: "Zones" },
+    { value: registrarCount, label: "注册商" },
+  ];
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,9 +100,11 @@ function UnlockPage() {
             </div>
           </div>
           <div className="relative grid grid-cols-3 gap-3 text-xs">
-            {["493 域名", "42 Zones", "3 注册商"].map((item) => (
-              <div key={item} className="rounded-lg border border-border/60 bg-card/60 p-3">
-                <div className="font-mono text-sm font-semibold">{item}</div>
+            {readouts.map((item) => (
+              <div key={item.label} className="rounded-lg border border-border/60 bg-card/60 p-3">
+                <div className="font-mono text-sm font-semibold">
+                  {assetsQuery.isLoading ? "—" : item.value} {item.label}
+                </div>
                 <div className="text-muted-foreground">当前资产</div>
               </div>
             ))}
