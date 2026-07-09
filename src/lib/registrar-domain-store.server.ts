@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { normalizeDomainLoose } from "./domain-utils";
 
 export type PersistedRegistrar = string;
 
@@ -20,6 +21,12 @@ export type PersistedRegistrarDomain = {
   tags?: string[];
   estimatedValue?: number;
   favorite?: boolean;
+  /** 精品域名标记（前台精品筛选与置顶排序），旧数据默认 false */
+  featured?: boolean;
+  /** 其他分类（前台「其他」筛选），旧数据默认空 */
+  category?: string;
+  /** 排序权重，越小越靠前；缺省时按字母序 */
+  sortOrder?: number;
   autoRenew?: boolean;
   domainLock?: boolean;
   privacyProtection?: boolean;
@@ -74,6 +81,9 @@ export type EditableRegistrarDomainPatch = {
   tags?: string[] | null;
   estimatedValue?: number | null;
   favorite?: boolean;
+  featured?: boolean;
+  category?: string | null;
+  sortOrder?: number | null;
   autoRenew?: boolean | null;
   domainLock?: boolean | null;
   privacyProtection?: boolean | null;
@@ -97,20 +107,35 @@ async function readStore(): Promise<Store> {
   try {
     const txt = await readFile(FILE, "utf8");
     const parsed = JSON.parse(txt);
-    const domains =
+    const rawRows =
       parsed?.domains && typeof parsed.domains === "object"
-        ? Object.fromEntries(
-            Object.entries(parsed.domains).map(([key, value]) => [
-              key,
-              migrateDomain(value as Partial<PersistedRegistrarDomain>),
-            ]),
+        ? Object.values(parsed.domains).map((value) =>
+            migrateDomain(value as Partial<PersistedRegistrarDomain>),
           )
-        : {};
+        : [];
+    // 迁移去重：按「注册商 + 标准化域名」合并历史重复记录（大小写/格式差异等），
+    // 合并而非删除，保留精品标记、备注、分组等信息。
+    const domains: Record<string, PersistedRegistrarDomain> = {};
+    let mergedCount = 0;
+    for (const row of rawRows) {
+      const key = keyOf(row.registrar, row.domain);
+      const existing = domains[key];
+      if (!existing) {
+        domains[key] = row;
+      } else {
+        domains[key] = mergeDuplicateRegistrarDomains(existing, row);
+        mergedCount += 1;
+      }
+    }
     cache = {
       v: 1,
       domains,
       jobs: Array.isArray(parsed?.jobs) ? parsed.jobs : [],
     };
+    if (mergedCount > 0) {
+      console.warn(`[registrar-domain-store] 迁移合并了 ${mergedCount} 条重复域名记录`);
+      await writeStore(cache);
+    }
   } catch (error: unknown) {
     const code =
       typeof error === "object" && error && "code" in error
@@ -133,9 +158,7 @@ function migrateDomain(row: Partial<PersistedRegistrarDomain>): PersistedRegistr
   return {
     id: row.id ?? randomUUID(),
     registrar: row.registrar ?? "aliyun",
-    domain: String(row.domain ?? "")
-      .trim()
-      .toLowerCase(),
+    domain: normalizeDomainLoose(String(row.domain ?? "")),
     nameservers: Array.isArray(row.nameservers) ? row.nameservers.filter(Boolean).map(String) : [],
     nsStatus: row.nsStatus ?? "unknown",
     nsProvider: row.nsProvider,
@@ -151,6 +174,12 @@ function migrateDomain(row: Partial<PersistedRegistrarDomain>): PersistedRegistr
         ? Math.max(0, Math.round(row.estimatedValue))
         : undefined,
     favorite: Boolean(row.favorite),
+    featured: Boolean(row.featured),
+    category: cleanOptionalText(row.category),
+    sortOrder:
+      typeof row.sortOrder === "number" && Number.isFinite(row.sortOrder)
+        ? Math.round(row.sortOrder)
+        : undefined,
     autoRenew: typeof row.autoRenew === "boolean" ? row.autoRenew : undefined,
     domainLock: typeof row.domainLock === "boolean" ? row.domainLock : undefined,
     privacyProtection:
@@ -214,6 +243,36 @@ function normalizeAssetStatus(
   return "unknown";
 }
 
+// 合并两条重复域名记录：以更新时间较新的为主，缺失字段从旧记录补齐；
+// 精品任一为真则保留、备注拼接、排序权重取更小、标签求并集，避免丢信息。
+function mergeDuplicateRegistrarDomains(
+  a: PersistedRegistrarDomain,
+  b: PersistedRegistrarDomain,
+): PersistedRegistrarDomain {
+  const [older, newer] =
+    (a.updatedAt || "") <= (b.updatedAt || "") ? ([a, b] as const) : ([b, a] as const);
+  const notes = [...new Set([older.note, newer.note].filter(Boolean))];
+  return {
+    ...older,
+    ...Object.fromEntries(Object.entries(newer).filter(([, v]) => v !== undefined)),
+    id: older.id,
+    domain: newer.domain,
+    registrar: newer.registrar,
+    nameservers: newer.nameservers.length > 0 ? newer.nameservers : older.nameservers,
+    group: newer.group ?? older.group,
+    category: newer.category ?? older.category,
+    tags: [...new Set([...(older.tags ?? []), ...(newer.tags ?? [])])],
+    favorite: Boolean(older.favorite || newer.favorite),
+    featured: Boolean(older.featured || newer.featured),
+    sortOrder:
+      older.sortOrder !== undefined && newer.sortOrder !== undefined
+        ? Math.min(older.sortOrder, newer.sortOrder)
+        : (newer.sortOrder ?? older.sortOrder),
+    note: notes.length > 0 ? notes.join("；") : undefined,
+    firstSeenAt: older.firstSeenAt < newer.firstSeenAt ? older.firstSeenAt : newer.firstSeenAt,
+  };
+}
+
 async function writeStore(store: Store) {
   cache = store;
   await mkdir(dirname(FILE), { recursive: true });
@@ -264,6 +323,16 @@ export async function updatePersistedRegistrarDomain(
         : undefined;
   }
   if (patch.favorite !== undefined) next.favorite = Boolean(patch.favorite);
+  if (patch.featured !== undefined) next.featured = Boolean(patch.featured);
+  if (patch.category !== undefined) {
+    next.category = patch.category === null ? undefined : cleanOptionalText(patch.category);
+  }
+  if (patch.sortOrder !== undefined) {
+    next.sortOrder =
+      typeof patch.sortOrder === "number" && Number.isFinite(patch.sortOrder)
+        ? Math.round(patch.sortOrder)
+        : undefined;
+  }
   if (patch.autoRenew !== undefined) {
     next.autoRenew = typeof patch.autoRenew === "boolean" ? patch.autoRenew : undefined;
   }
@@ -295,9 +364,7 @@ export async function syncRegistrarDomainsToStore(
 
   for (const item of items) {
     try {
-      const domain = String(item.domain || "")
-        .trim()
-        .toLowerCase();
+      const domain = normalizeDomainLoose(String(item.domain || ""));
       if (!domain) throw new Error("域名为空");
       seen.add(domain);
       const now = new Date().toISOString();
@@ -356,6 +423,9 @@ export async function syncRegistrarDomainsToStore(
           tags: [],
           estimatedValue: undefined,
           favorite: false,
+          featured: false,
+          category: undefined,
+          sortOrder: undefined,
           autoRenew: item.autoRenew,
           domainLock: item.domainLock,
           privacyProtection: item.privacyProtection,
@@ -409,6 +479,38 @@ export async function syncRegistrarDomainsToStore(
     .filter((row) => row.registrar === registrar)
     .sort((a, b) => a.domain.localeCompare(b.domain));
   return { domains, job };
+}
+
+// 按标准化域名批量设置展示 meta（精品/分类/排序权重），
+// 同一域名跨注册商的多条记录会一起更新，保证后台编辑的是「合并后的唯一域名」。
+export async function setRegistrarDomainMetaByDomain(
+  domain: string,
+  meta: { featured?: boolean; category?: string | null; sortOrder?: number | null },
+): Promise<number> {
+  const store = await readStore();
+  const target = normalizeDomainLoose(domain);
+  let updated = 0;
+  const now = new Date().toISOString();
+  for (const key of Object.keys(store.domains)) {
+    const row = store.domains[key];
+    if (normalizeDomainLoose(row.domain) !== target) continue;
+    const next = { ...row };
+    if (meta.featured !== undefined) next.featured = Boolean(meta.featured);
+    if (meta.category !== undefined) {
+      next.category = meta.category === null ? undefined : cleanOptionalText(meta.category);
+    }
+    if (meta.sortOrder !== undefined) {
+      next.sortOrder =
+        typeof meta.sortOrder === "number" && Number.isFinite(meta.sortOrder)
+          ? Math.round(meta.sortOrder)
+          : undefined;
+    }
+    next.updatedAt = now;
+    store.domains[key] = next;
+    updated += 1;
+  }
+  if (updated > 0) await writeStore(store);
+  return updated;
 }
 
 export async function recordRegistrarSyncFailure(

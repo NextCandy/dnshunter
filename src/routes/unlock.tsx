@@ -253,6 +253,7 @@ const DEFAULT_UNLOCK_SETTINGS: SiteSettings = {
   copyrightYear: String(new Date().getFullYear()),
   announcement: "",
   socialLinks: [],
+  contactLinks: [],
 };
 
 function setMeta(name: string, content: string) {
@@ -281,10 +282,12 @@ function setFavicon(href: string) {
 function BrandIcon({ logoUrl, className }: { logoUrl: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [logoUrl]);
-  if (!logoUrl || failed) return <DeckMark className={className} />;
+  // 默认使用站点自带 DS Logo；后台配置的 logoUrl 优先，加载失败回退 DeckMark。
+  const src = logoUrl || "/logo.png";
+  if (failed) return <DeckMark className={className} />;
   return (
     <img
-      src={logoUrl}
+      src={src}
       alt=""
       className={["rounded-sm object-contain", className].filter(Boolean).join(" ")}
       onError={() => setFailed(true)}

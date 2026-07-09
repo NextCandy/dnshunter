@@ -43,6 +43,18 @@ export const Route = createFileRoute("/api/registrar-domains/$id")({
           if ("favorite" in body && typeof body.favorite === "boolean") {
             patch.favorite = body.favorite;
           }
+          if ("featured" in body && typeof body.featured === "boolean") {
+            patch.featured = body.featured;
+          }
+          if ("category" in body && (typeof body.category === "string" || body.category === null)) {
+            patch.category = body.category;
+          }
+          if (
+            "sortOrder" in body &&
+            (typeof body.sortOrder === "number" || body.sortOrder === null)
+          ) {
+            patch.sortOrder = body.sortOrder;
+          }
           if (
             "autoRenew" in body &&
             (typeof body.autoRenew === "boolean" || body.autoRenew === null)

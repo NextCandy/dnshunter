@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { resolveDomainsNameservers, type DomainNameserverInfo } from "./nameservers.server";
+import { normalizeDomainLoose } from "./domain-utils";
 
 export type ManualDomain = {
   id: string;
@@ -17,6 +18,12 @@ export type ManualDomain = {
   note?: string;
   tags: string[];
   group?: string;
+  /** 精品域名标记（前台精品筛选与置顶排序），旧数据默认 false */
+  featured?: boolean;
+  /** 其他分类（前台「其他」筛选），旧数据默认空 */
+  category?: string;
+  /** 排序权重，越小越靠前；缺省时按字母序 */
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,6 +39,9 @@ export type ManualDomainPatch = {
   note?: string | null;
   tags?: string[] | null;
   group?: string | null;
+  featured?: boolean;
+  category?: string | null;
+  sortOrder?: number | null;
 };
 
 type Store = { v: 1; domains: Record<string, ManualDomain> };
@@ -70,9 +80,7 @@ function normTags(v: unknown): string[] {
 }
 
 function normDomain(v: unknown): string {
-  return String(v ?? "")
-    .trim()
-    .toLowerCase();
+  return normalizeDomainLoose(String(v ?? ""));
 }
 
 function migrate(row: Partial<ManualDomain>): ManualDomain {
@@ -90,8 +98,38 @@ function migrate(row: Partial<ManualDomain>): ManualDomain {
     note: cleanText(row.note),
     tags: normTags(row.tags),
     group: cleanText(row.group),
+    featured: Boolean(row.featured),
+    category: cleanText(row.category),
+    sortOrder:
+      typeof row.sortOrder === "number" && Number.isFinite(row.sortOrder)
+        ? Math.round(row.sortOrder)
+        : undefined,
     createdAt: row.createdAt ?? now,
     updatedAt: row.updatedAt ?? now,
+  };
+}
+
+// 合并两条重复手动域名：新记录为主、旧记录补缺；精品任一为真则保留、备注拼接。
+function mergeDuplicateManualDomains(a: ManualDomain, b: ManualDomain): ManualDomain {
+  const [older, newer] =
+    (a.updatedAt || "") <= (b.updatedAt || "") ? ([a, b] as const) : ([b, a] as const);
+  const notes = [...new Set([older.note, newer.note].filter(Boolean))];
+  return {
+    ...older,
+    ...Object.fromEntries(Object.entries(newer).filter(([, v]) => v !== undefined)),
+    id: older.id,
+    domain: newer.domain,
+    nameservers: newer.nameservers.length > 0 ? newer.nameservers : older.nameservers,
+    group: newer.group ?? older.group,
+    category: newer.category ?? older.category,
+    tags: [...new Set([...(older.tags ?? []), ...(newer.tags ?? [])])],
+    featured: Boolean(older.featured || newer.featured),
+    sortOrder:
+      older.sortOrder !== undefined && newer.sortOrder !== undefined
+        ? Math.min(older.sortOrder, newer.sortOrder)
+        : (newer.sortOrder ?? older.sortOrder),
+    note: notes.length > 0 ? notes.join("；") : undefined,
+    createdAt: older.createdAt < newer.createdAt ? older.createdAt : newer.createdAt,
   };
 }
 
@@ -115,6 +153,15 @@ function applyManualPatch(cur: ManualDomain, patch: ManualDomainPatch): ManualDo
   if (patch.tags !== undefined) next.tags = patch.tags === null ? [] : normTags(patch.tags);
   if (patch.group !== undefined)
     next.group = patch.group === null ? undefined : cleanText(patch.group);
+  if (patch.featured !== undefined) next.featured = Boolean(patch.featured);
+  if (patch.category !== undefined)
+    next.category = patch.category === null ? undefined : cleanText(patch.category);
+  if (patch.sortOrder !== undefined) {
+    next.sortOrder =
+      typeof patch.sortOrder === "number" && Number.isFinite(patch.sortOrder)
+        ? Math.round(patch.sortOrder)
+        : undefined;
+  }
   next.updatedAt = new Date().toISOString();
   return next;
 }
@@ -124,16 +171,27 @@ async function readStore(): Promise<Store> {
   try {
     const txt = await readFile(FILE, "utf8");
     const parsed = JSON.parse(txt);
-    const domains =
+    const rows =
       parsed?.domains && typeof parsed.domains === "object"
-        ? Object.fromEntries(
-            Object.entries(parsed.domains).map(([k, v]) => [
-              k,
-              migrate(v as Partial<ManualDomain>),
-            ]),
-          )
-        : {};
+        ? Object.values(parsed.domains).map((v) => migrate(v as Partial<ManualDomain>))
+        : [];
+    // 迁移去重：键统一为标准化域名，历史重复记录做字段合并而非删除。
+    const domains: Record<string, ManualDomain> = {};
+    let mergedCount = 0;
+    for (const row of rows) {
+      const key = row.domain;
+      if (!domains[key]) {
+        domains[key] = row;
+      } else {
+        domains[key] = mergeDuplicateManualDomains(domains[key], row);
+        mergedCount += 1;
+      }
+    }
     cache = { v: 1, domains };
+    if (mergedCount > 0) {
+      console.warn(`[manual-domain-store] 迁移合并了 ${mergedCount} 条重复域名记录`);
+      await writeStore(cache);
+    }
   } catch (error: unknown) {
     const code =
       typeof error === "object" && error && "code" in error
@@ -219,6 +277,7 @@ export async function addManualDomains(
       nsStatus: ns?.nsStatus ?? "unknown",
       nsProvider: ns?.nsProvider,
       tags: [],
+      featured: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -313,12 +372,37 @@ export async function restoreManualBackup(
   }
   const txt = await readFile(join(BACKUP_DIR, file), "utf8");
   const parsed = JSON.parse(txt);
-  const domains =
+  const rows =
     parsed?.domains && typeof parsed.domains === "object"
-      ? Object.fromEntries(
-          Object.entries(parsed.domains).map(([k, v]) => [k, migrate(v as Partial<ManualDomain>)]),
-        )
-      : {};
+      ? Object.values(parsed.domains).map((v) => migrate(v as Partial<ManualDomain>))
+      : [];
+  // 恢复备份时同样按标准化域名去重合并，避免旧备份把重复数据带回来。
+  const domains: Record<string, ManualDomain> = {};
+  for (const row of rows) {
+    domains[row.domain] = domains[row.domain]
+      ? mergeDuplicateManualDomains(domains[row.domain], row)
+      : row;
+  }
   await writeStore({ v: 1, domains });
   return { restored: true, count: Object.keys(domains).length };
+}
+
+// 按标准化域名设置展示 meta（精品/分类/排序权重）。
+export async function setManualDomainMetaByDomain(
+  domain: string,
+  meta: { featured?: boolean; category?: string | null; sortOrder?: number | null },
+): Promise<number> {
+  const store = await readStore();
+  const target = normalizeDomainLoose(domain);
+  const key = Object.keys(store.domains).find(
+    (k) => normalizeDomainLoose(store.domains[k].domain) === target,
+  );
+  if (!key) return 0;
+  store.domains[key] = applyManualPatch(store.domains[key], {
+    featured: meta.featured,
+    category: meta.category,
+    sortOrder: meta.sortOrder,
+  });
+  await writeStore(store);
+  return 1;
 }

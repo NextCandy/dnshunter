@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -50,6 +51,7 @@ function ManualDomainsPage() {
   const router = useRouter();
   const listFn = useServerFn(listManualDomains);
   const addFn = useServerFn(addManualDomains);
+  const quickUpdateFn = useServerFn(updateManualDomain);
   const delFn = useServerFn(deleteManualDomain);
   const batchDelFn = useServerFn(deleteManualDomains);
   const q = useQuery({ queryKey: ["manual-domains"], queryFn: () => listFn() });
@@ -76,6 +78,16 @@ function ManualDomainsPage() {
       q.refetch();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "添加失败"),
+  });
+
+  const toggleFeatured = useMutation({
+    mutationFn: (args: { id: string; featured: boolean }) =>
+      quickUpdateFn({ data: { id: args.id, patch: { featured: args.featured } } }),
+    onSuccess: (row) => {
+      toast.success(row?.featured ? "已设为精品" : "已取消精品");
+      q.refetch();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "设置精品失败"),
   });
 
   const del = useMutation({
@@ -275,10 +287,11 @@ function ManualDomainsPage() {
                     />
                   </th>
                   <Th>域名</Th>
+                  <Th>精品</Th>
                   <Th>注册商</Th>
                   <Th>NS 托管 / DNS 地址</Th>
                   <Th>到期</Th>
-                  <Th>标签</Th>
+                  <Th>标签 / 分类</Th>
                   <th className="w-32 p-3 text-right font-mono text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                     操作
                   </th>
@@ -287,7 +300,7 @@ function ManualDomainsPage() {
               <tbody>
                 {visible.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={8} className="p-12 text-center text-sm text-muted-foreground">
                       {q.isLoading
                         ? "加载中…"
                         : rows.length === 0
@@ -307,6 +320,15 @@ function ManualDomainsPage() {
                     </td>
                     <td className="p-3">
                       <span className="font-mono text-sm font-medium">{row.domain}</span>
+                    </td>
+                    <td className="p-3">
+                      <Switch
+                        checked={Boolean(row.featured)}
+                        onCheckedChange={(checked) =>
+                          toggleFeatured.mutate({ id: row.id, featured: checked })
+                        }
+                        aria-label={`设置 ${row.domain} 精品标记`}
+                      />
                     </td>
                     <td className="p-3">
                       {row.registrar ? (
@@ -338,6 +360,11 @@ function ManualDomainsPage() {
                     </td>
                     <td className="p-3">
                       <div className="flex flex-wrap gap-1">
+                        {row.category && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {row.category}
+                          </Badge>
+                        )}
                         {row.tags.map((t) => (
                           <Badge key={t} variant="outline" className="text-[10px]">
                             {t}
@@ -454,6 +481,9 @@ function EditManualDialog({
   const [note, setNote] = useState("");
   const [tags, setTags] = useState("");
   const [group, setGroup] = useState("");
+  const [featured, setFeatured] = useState(false);
+  const [category, setCategory] = useState("");
+  const [sortOrder, setSortOrder] = useState("");
 
   useEffect(() => {
     if (!row) return;
@@ -465,6 +495,9 @@ function EditManualDialog({
     setNote(row.note ?? "");
     setTags(row.tags.join(", "));
     setGroup(row.group ?? "");
+    setFeatured(Boolean(row.featured));
+    setCategory(row.category ?? "");
+    setSortOrder(row.sortOrder !== undefined ? String(row.sortOrder) : "");
   }, [row]);
 
   const save = useMutation({
@@ -487,6 +520,9 @@ function EditManualDialog({
               .map((s) => s.trim())
               .filter(Boolean),
             group: group.trim() || null,
+            featured,
+            category: category.trim() || null,
+            sortOrder: sortOrder.trim() === "" ? null : Number(sortOrder),
           },
         },
       }),
@@ -539,6 +575,28 @@ function EditManualDialog({
               <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
             </Field>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="精品域名（前台置顶展示）">
+              <div className="flex h-9 items-center">
+                <Switch checked={featured} onCheckedChange={setFeatured} aria-label="精品域名" />
+              </div>
+            </Field>
+            <Field label="排序权重（越小越靠前，可留空）">
+              <Input
+                type="number"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                placeholder="如 10"
+              />
+            </Field>
+          </div>
+          <Field label="其他分类（前台「其他」筛选用）">
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="如 出售 / 自用 / 收藏"
+            />
+          </Field>
           <Field label="分组">
             <Input
               value={group}

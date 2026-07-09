@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Check, Loader2, Save } from "lucide-react";
+import { Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { getSiteSettings, saveAdminSiteSettings } from "@/lib/site-settings.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DeckMark } from "@/components/deck-mark";
-import type { SiteSettings, SocialLink } from "@/lib/site-settings.server";
+import type { ContactLink, SiteSettings, SocialLink } from "@/lib/site-settings.server";
 
 export const Route = createFileRoute("/_app/site-settings")({
   head: () => ({ meta: [{ title: "前台设置 · dshunter" }] }),
@@ -43,6 +50,7 @@ const EMPTY_SETTINGS: SiteSettings = {
   copyrightYear: String(new Date().getFullYear()),
   announcement: "",
   socialLinks: [],
+  contactLinks: [],
 };
 
 function SiteSettingsPage() {
@@ -212,6 +220,18 @@ function SiteSettingsPage() {
         </Card>
 
         <Card className="grid gap-4 p-4">
+          <SectionTitle title="联系方式图标链接（前台页脚）" />
+          <p className="text-xs text-muted-foreground">
+            前台页脚只显示这里启用的小图标超链接；类型决定图标，名称显示为悬停
+            tooltip。邮箱可直接填邮箱地址（自动转 mailto），其余填 http(s) 链接。
+          </p>
+          <ContactLinksEditor
+            links={form.contactLinks}
+            onChange={(links) => setForm((current) => ({ ...current, contactLinks: links }))}
+          />
+        </Card>
+
+        <Card className="grid gap-4 p-4">
           <SectionTitle title="页脚备案" />
           <Field label="页脚文案" hint="留空时使用网站介绍。">
             <Input
@@ -341,6 +361,104 @@ function SiteSettingsPage() {
 
 function SectionTitle({ title }: { title: string }) {
   return <div className="font-semibold">{title}</div>;
+}
+
+const CONTACT_TYPE_OPTIONS: { value: ContactLink["type"]; label: string }[] = [
+  { value: "email", label: "邮箱" },
+  { value: "telegram", label: "Telegram" },
+  { value: "wechat", label: "微信 / 二维码页" },
+  { value: "x", label: "X / Twitter" },
+  { value: "github", label: "GitHub" },
+  { value: "custom", label: "自定义链接" },
+];
+
+function ContactLinksEditor({
+  links,
+  onChange,
+}: {
+  links: ContactLink[];
+  onChange: (links: ContactLink[]) => void;
+}) {
+  const update = (index: number, patch: Partial<ContactLink>) => {
+    onChange(links.map((link, i) => (i === index ? { ...link, ...patch } : link)));
+  };
+  const remove = (index: number) => onChange(links.filter((_, i) => i !== index));
+  const add = () =>
+    onChange([
+      ...links,
+      { type: "custom", label: "", url: "", enabled: true, sortOrder: links.length },
+    ]);
+
+  return (
+    <div className="grid gap-2">
+      {links.length === 0 && (
+        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+          暂未配置联系方式；前台不会显示任何联系方式图标。
+        </div>
+      )}
+      {links.map((link, index) => (
+        <div
+          key={index}
+          className="grid gap-2 rounded-lg border border-border/60 p-3 md:grid-cols-[150px_minmax(0,1fr)_minmax(0,1.4fr)_70px_auto_auto] md:items-center"
+        >
+          <Select
+            value={link.type}
+            onValueChange={(value) => update(index, { type: value as ContactLink["type"] })}
+          >
+            <SelectTrigger aria-label="图标类型">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CONTACT_TYPE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            aria-label="显示名称"
+            placeholder="显示名称"
+            value={link.label}
+            onChange={(event) => update(index, { label: event.target.value })}
+          />
+          <Input
+            aria-label="链接地址"
+            placeholder={link.type === "email" ? "hi@example.com 或 mailto:…" : "https://…"}
+            value={link.url}
+            onChange={(event) => update(index, { url: event.target.value })}
+            className="font-mono text-xs"
+          />
+          <Input
+            aria-label="排序"
+            type="number"
+            value={String(link.sortOrder)}
+            onChange={(event) => update(index, { sortOrder: Number(event.target.value) || 0 })}
+          />
+          <div className="flex items-center gap-2">
+            <Switch
+              aria-label="是否启用"
+              checked={link.enabled}
+              onCheckedChange={(checked) => update(index, { enabled: checked })}
+            />
+            <span className="text-xs text-muted-foreground">{link.enabled ? "启用" : "停用"}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="删除该联系方式"
+            onClick={() => remove(index)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" className="w-fit gap-1.5" onClick={add}>
+        <Plus className="size-3.5" />
+        添加联系方式
+      </Button>
+    </div>
+  );
 }
 
 function Field({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {

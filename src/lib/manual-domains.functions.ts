@@ -23,7 +23,20 @@ export const addManualDomains = createServerFn({ method: "POST" })
   .middleware([requireGate])
   .validator((d: { domains: string[] }) => d)
   .handler(async ({ data }) => {
-    const result = await addManual(data.domains);
+    // 跨库查重：已由注册商同步管理的域名不再重复录入手动库，
+    // 避免同一域名在后台出现两条管理记录。
+    const [{ listPersistedRegistrarDomains }, { normalizeDomainLoose }] = await Promise.all([
+      import("./registrar-domain-store.server"),
+      import("./domain-utils"),
+    ]);
+    const registrarDomains = new Set(
+      (await listPersistedRegistrarDomains()).map((row) => normalizeDomainLoose(row.domain)),
+    );
+    const input = [...new Set(data.domains.map((d) => normalizeDomainLoose(d)).filter(Boolean))];
+    const toAdd = input.filter((d) => !registrarDomains.has(d));
+    const registrarSkipped = input.length - toAdd.length;
+    const result = await addManual(toAdd);
+    result.skipped += registrarSkipped;
     await recordOperationLog({
       category: "domains",
       action: "manual_domains.add",

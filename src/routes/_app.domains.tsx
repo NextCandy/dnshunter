@@ -16,7 +16,8 @@ import type {
   RegistrarSyncJob,
 } from "@/lib/registrar-domain-store.server";
 import { listZones } from "@/lib/cloudflare.functions";
-import { parseDomainList } from "@/lib/domain-utils";
+import { setDomainDisplayMeta } from "@/lib/domain-meta.functions";
+import { normalizeDomainLoose, parseDomainList } from "@/lib/domain-utils";
 import { setDomains, useDomains } from "@/lib/domain-store";
 import { formatDateTime } from "@/lib/date-format";
 import { Card } from "@/components/ui/card";
@@ -25,6 +26,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -51,6 +54,7 @@ import {
   Search,
   Server,
   Settings,
+  Star,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -154,6 +158,7 @@ function DomainsPage() {
   );
 
   const [dnsDomain, setDnsDomain] = useState<string | null>(null);
+  const [metaDomain, setMetaDomain] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchPending, setSearchPending] = useState(false);
@@ -340,6 +345,25 @@ function DomainsPage() {
       toast.error(message);
     },
   });
+
+  // 展示 meta（精品/分类/权重）按标准化域名聚合，供列表小星标与编辑框使用
+  const metaByDomain = useMemo(() => {
+    const map = new Map<string, { featured: boolean; category: string; sortOrder?: number }>();
+    for (const row of persistedAssets.data?.rows ?? []) {
+      const key = normalizeDomainLoose(row.domain);
+      const current = map.get(key) ?? { featured: false, category: "", sortOrder: undefined };
+      current.featured = current.featured || Boolean(row.featured);
+      if (!current.category && row.category) current.category = row.category;
+      if (row.sortOrder !== undefined) {
+        current.sortOrder =
+          current.sortOrder !== undefined
+            ? Math.min(current.sortOrder, row.sortOrder)
+            : row.sortOrder;
+      }
+      map.set(key, current);
+    }
+    return map;
+  }, [persistedAssets.data?.rows]);
 
   const merged = useMemo<Entry[]>(() => {
     const map = new Map<string, Entry>();
@@ -839,8 +863,11 @@ function DomainsPage() {
                       <td className="sticky left-12 z-10 bg-inherit p-3">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="max-w-64 truncate font-mono font-medium">
-                              {e.domain}
+                            <div className="flex max-w-64 items-center gap-1.5">
+                              {metaByDomain.get(e.domain)?.featured && (
+                                <Star className="size-3.5 shrink-0 fill-warning text-warning" />
+                              )}
+                              <span className="truncate font-mono font-medium">{e.domain}</span>
                             </div>
                           </TooltipTrigger>
                           {e.domain.length > 30 && (
@@ -903,6 +930,25 @@ function DomainsPage() {
                       </td>
                       <td className="sticky right-0 z-10 bg-inherit p-3">
                         <div className="flex justify-end gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setMetaDomain(e.domain)}
+                                aria-label={`设置 ${e.domain} 的前台展示`}
+                              >
+                                <Star
+                                  className={
+                                    metaByDomain.get(e.domain)?.featured
+                                      ? "size-4 fill-warning text-warning"
+                                      : "size-4 text-muted-foreground"
+                                  }
+                                />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">精品 / 分类 / 排序</TooltipContent>
+                          </Tooltip>
                           <Button
                             variant="outline"
                             size="sm"
@@ -1002,7 +1048,116 @@ function DomainsPage() {
         onClose={() => setDnsDomain(null)}
         onEditInCloudflare={openDns}
       />
+      <DomainMetaDialog
+        domain={metaDomain}
+        meta={metaDomain ? metaByDomain.get(metaDomain) : undefined}
+        onClose={() => setMetaDomain(null)}
+        onSaved={() => {
+          setMetaDomain(null);
+          persistedAssets.refetch();
+        }}
+      />
     </div>
+  );
+}
+
+// 前台展示设置：精品 / 其他分类 / 排序权重（按标准化域名跨注册商与手动库统一更新）
+function DomainMetaDialog({
+  domain,
+  meta,
+  onClose,
+  onSaved,
+}: {
+  domain: string | null;
+  meta?: { featured: boolean; category: string; sortOrder?: number };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const metaFn = useServerFn(setDomainDisplayMeta);
+  const [featured, setFeatured] = useState(false);
+  const [category, setCategory] = useState("");
+  const [sortOrder, setSortOrder] = useState("");
+
+  useEffect(() => {
+    if (!domain) return;
+    setFeatured(Boolean(meta?.featured));
+    setCategory(meta?.category ?? "");
+    setSortOrder(meta?.sortOrder !== undefined ? String(meta.sortOrder) : "");
+    // meta 随 domain 打开时刷新即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      metaFn({
+        data: {
+          domain: domain!,
+          meta: {
+            featured,
+            category: category.trim() || null,
+            sortOrder: sortOrder.trim() === "" ? null : Number(sortOrder),
+          },
+        },
+      }),
+    onSuccess: (result) => {
+      if (result.updated > 0) {
+        toast.success("前台展示设置已保存");
+        onSaved();
+      } else {
+        toast.info("该域名尚未持久化（请先同步注册商或加入手动域名）");
+        onClose();
+      }
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "保存失败"),
+  });
+
+  return (
+    <Dialog open={!!domain} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-mono text-base">{domain} · 前台展示</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="flex items-center justify-between rounded-lg border border-border/60 px-3 py-2">
+            <div>
+              <div className="text-sm font-medium">精品域名</div>
+              <div className="text-xs text-muted-foreground">前台默认排序中置顶展示</div>
+            </div>
+            <Switch checked={featured} onCheckedChange={setFeatured} aria-label="精品域名" />
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">
+              其他分类（前台「其他」筛选用，可留空）
+            </span>
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="如 出售 / 自用 / 收藏"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">
+              排序权重（越小越靠前，可留空按字母序）
+            </span>
+            <Input
+              type="number"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              placeholder="如 10"
+            />
+          </label>
+        </div>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
+            保存
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -6,6 +6,30 @@ export type SocialLink = {
   url: string;
 };
 
+export type ContactLinkType = "email" | "telegram" | "wechat" | "x" | "github" | "custom";
+
+export type ContactLink = {
+  /** 图标类型 */
+  type: ContactLinkType;
+  /** 显示名称（tooltip / aria-label） */
+  label: string;
+  /** 链接地址：mailto:… 或 http(s)://… */
+  url: string;
+  /** 是否启用；未启用的前台不显示 */
+  enabled: boolean;
+  /** 排序，越小越靠前 */
+  sortOrder: number;
+};
+
+export const CONTACT_LINK_TYPES: ContactLinkType[] = [
+  "email",
+  "telegram",
+  "wechat",
+  "x",
+  "github",
+  "custom",
+];
+
 export type SiteSettings = {
   siteName: string;
   siteDescription: string;
@@ -30,6 +54,8 @@ export type SiteSettings = {
   copyrightYear: string;
   announcement: string;
   socialLinks: SocialLink[];
+  /** 前台联系方式小图标超链接；旧数据默认空列表 */
+  contactLinks: ContactLink[];
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -56,6 +82,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   copyrightYear: String(new Date().getFullYear()),
   announcement: "",
   socialLinks: [],
+  contactLinks: [],
 };
 
 const FILE = process.env.SITE_SETTINGS_FILE || join(process.cwd(), "data", "site-settings.json");
@@ -65,7 +92,10 @@ const MAX_BACKUPS = 20;
 let cache: SiteSettings | null = null;
 
 const LIMITS: Record<
-  keyof Omit<SiteSettings, "showIcp" | "showPoliceRecord" | "showFooterText" | "socialLinks">,
+  keyof Omit<
+    SiteSettings,
+    "showIcp" | "showPoliceRecord" | "showFooterText" | "socialLinks" | "contactLinks"
+  >,
   number
 > = {
   siteName: 80,
@@ -130,6 +160,51 @@ function email(value: unknown): string {
   return raw;
 }
 
+// 联系方式链接 URL：允许 mailto: 与 http(s)；纯邮箱自动补 mailto: 前缀。
+function contactUrl(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
+  if (raw.length > 500) throw new Error("contactLinks URL 过长");
+  const candidate = /^[^\s@:/]+@[^\s@]+\.[^\s@]+$/.test(raw) ? `mailto:${raw}` : raw;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("contactLinks URL 必须是有效的 mailto: 或 http(s) 链接");
+  }
+  if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) {
+    throw new Error("contactLinks 只允许 mailto: 或 http(s) 链接");
+  }
+  return candidate;
+}
+
+function normalizeContactLinks(value: unknown): ContactLink[] {
+  if (!Array.isArray(value)) return [];
+  const links = value.slice(0, 12).flatMap((item, index): ContactLink[] => {
+    if (!item || typeof item !== "object") return [];
+    const source = item as Record<string, unknown>;
+    const type = CONTACT_LINK_TYPES.includes(source.type as ContactLinkType)
+      ? (source.type as ContactLinkType)
+      : "custom";
+    const label = trimText(source.label, "", 40);
+    const url = contactUrl(source.url);
+    if (!url) return [];
+    return [
+      {
+        type,
+        label: label || type,
+        url,
+        enabled: typeof source.enabled === "boolean" ? source.enabled : true,
+        sortOrder:
+          typeof source.sortOrder === "number" && Number.isFinite(source.sortOrder)
+            ? Math.round(source.sortOrder)
+            : index,
+      },
+    ];
+  });
+  return links.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 function normalizeSocialLinks(value: unknown): SocialLink[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 8).flatMap((item) => {
@@ -192,6 +267,7 @@ export function normalizeSiteSettings(input: unknown): SiteSettings {
       DEFAULT_SITE_SETTINGS.copyrightYear,
     announcement: trimText(obj.announcement, "", LIMITS.announcement),
     socialLinks: normalizeSocialLinks(obj.socialLinks),
+    contactLinks: normalizeContactLinks(obj.contactLinks),
   };
 }
 

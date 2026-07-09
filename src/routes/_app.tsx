@@ -380,8 +380,10 @@ function SidebarNav({
 function AdminBrandIcon({ logoUrl, className }: { logoUrl: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [logoUrl]);
-  if (!logoUrl || failed) return <DeckMark className={className} />;
-  return <img src={logoUrl} alt="" className={className} onError={() => setFailed(true)} />;
+  // 默认使用站点自带 DS Logo；后台配置的 logoUrl 优先，加载失败回退 DeckMark。
+  const src = logoUrl || "/logo.png";
+  if (failed) return <DeckMark className={className} />;
+  return <img src={src} alt="" className={className} onError={() => setFailed(true)} />;
 }
 
 function NavGroup({ label, collapsed }: { label: string; collapsed: boolean }) {
