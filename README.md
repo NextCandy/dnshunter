@@ -111,6 +111,23 @@ bun run build      # 生产构建（nitro node-server）
 - 注册商与 Cloudflare Token 使用最小权限。
 - 定期在 `/backup` 导出 JSON 快照；手动域名依赖内置自动备份即可回滚。
 
+## 🛠️ 当前维护状态
+
+截至 2026-07-09，主分支已完成站点设置、动态注册商、注册商同步预检、全量 lint 门禁、API 类型收紧、Fast Refresh lint 清零与构建弃用提示清理。最新阶段记录、NAS 部署状态、验证证据和回滚提示见 [`PROGRESS.md`](./PROGRESS.md)。
+
+本地接手机器建议先执行：
+
+```bash
+bun install
+bun run lint
+bun run typecheck
+bun run build
+```
+
+当前质量门禁为 `lint` 0 warning、`typecheck` 通过、生产构建通过；构建输出不再包含 TanStack Start `inputValidator()` 或 `vite-tsconfig-paths` 弃用提示。
+
+生产部署以 NAS `/volume1/docker/dshunter` 为准。部署前必须先备份项目目录、`data/`、compose 与 `.env`，且不得覆盖生产 `data/` 或 `.env`。最近两个代码阶段已同步 GitHub 并通过 CI，但 NAS SSH 认证暂未恢复，因此 NAS 实际部署需在凭据恢复后继续执行。
+
 ## 🧩 GitHub Actions
 
 仓库内置 `.github/workflows/docker.yml`。推送到 `main` 或 `v*` tag 后，会构建 `linux/amd64` 与 `linux/arm64` 镜像并发布到 GHCR。
