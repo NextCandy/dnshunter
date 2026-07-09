@@ -113,7 +113,7 @@ bun run build      # 生产构建（nitro node-server）
 
 ## 🛠️ 当前维护状态
 
-截至 2026-07-09，主分支已完成站点设置、动态注册商、注册商同步预检、全量 lint 门禁、API 类型收紧、Fast Refresh lint 清零与构建弃用提示清理。最新阶段记录、NAS 部署状态、验证证据和回滚提示见 [`PROGRESS.md`](./PROGRESS.md)。
+截至 2026-07-09，主分支已完成站点设置、动态注册商、注册商同步预检、全量 lint 门禁、API 类型收紧、Fast Refresh lint 清零、构建弃用提示清理，以及登录页站点品牌/资产读数动态化。最新阶段记录、NAS 部署状态、验证证据和回滚提示见 [`PROGRESS.md`](./PROGRESS.md)。
 
 本地接手机器建议先执行：
 
@@ -126,7 +126,7 @@ bun run build
 
 当前质量门禁为 `lint` 0 warning、`typecheck` 通过、生产构建通过；构建输出不再包含 TanStack Start `inputValidator()` 或 `vite-tsconfig-paths` 弃用提示。
 
-生产部署以 NAS `/volume1/docker/dshunter` 为准。部署前必须先备份项目目录、`data/`、compose 与 `.env`，且不得覆盖生产 `data/` 或 `.env`。最近两个代码阶段已同步 GitHub 并通过 CI，但 NAS SSH 认证暂未恢复，因此 NAS 实际部署需在凭据恢复后继续执行。
+生产部署以 NAS `/volume1/docker/dshunter` 为准。部署前必须先备份项目目录、`data/`、compose 与 `.env`，且不得覆盖生产 `data/` 或 `.env`。最近代码阶段已同步 GitHub、通过 CI，并按“备份 -> 构建 -> 只重启 `dshunter` 服务 -> 线上验证”的流程部署到 NAS。
 
 ## 🧩 GitHub Actions
 

@@ -1,17 +1,17 @@
 # DS Hunter 工作进度
 
-更新时间：2026-07-08
+更新时间：2026-07-09
 
 ## 当前状态
 
 - 主分支：`main`
 - 远端仓库：`https://github.com/NextCandy/dshunter`
 - 最近已推送阶段：
-  - `ce6e11a fix: 允许空工作集管理 DNS 模板`
-  - `c394fb9 feat: 增加 DNS 模板库`
-  - `86baa6d feat: 增加后台操作日志`
-  - `532777b feat: 增加通知中心和到期提醒`
-  - `2424553 feat: 支持动态注册商配置`
+  - `78ed48e fix: 登录页接入站点品牌设置`
+  - `c1c7e0f fix: 登录页资产读数改为动态数据`
+  - `33ed6b8 fix: 刷新登录态路由守卫`
+  - `1584ecf chore: 清理构建弃用警告`
+  - `8b39aca chore: 清理 Fast Refresh lint 警告`
 - 当前线上域名：`https://dshunter.com`
 - NAS 实际项目路径：`/volume1/docker/dshunter`
 - NAS compose 服务：`dshunter`
@@ -322,6 +322,39 @@ npm run build
   - 浏览器打开 `/unlock` 可看到 live 资产读数：`493 域名`、`42 Zones`、`3 注册商`。
   - 登录后直接进入 `/dashboard`，页面标题为“指挥台 · dshunter”，并渲染“运营概览”内容。
   - 390x844 移动登录页无横向溢出，浏览器控制台无 error/warning。
+
+## 2026-07-09 登录页站点品牌动态化阶段
+
+- 已将 `/unlock` 登录页接入后台站点设置：
+  - 登录页桌面品牌区和移动品牌区读取 `siteName`、`shortDescription`、`heroDescription`、`siteDescription`。
+  - 登录页 Logo 读取 `logoUrl`，加载失败或为空时回退默认 `DeckMark`。
+  - 登录页运行时同步 `document.title`、`description` meta 和 `faviconUrl`，与公开首页/后台品牌配置保持一致。
+  - 保留配置读取失败时的默认设置，避免登录入口白屏。
+- 本地验证：
+  - `bun run lint` 通过，0 error / 0 warning。
+  - `bun run typecheck` 通过。
+  - `bun run build` 通过。
+  - `git diff --check` 通过。
+  - 敏感信息扫描无命中。
+  - 本地浏览器 `/unlock` 显示本地站点配置 `DS Hunter Local QA`，title 为“登录 · DS Hunter Local QA”，桌面和 390x844 移动端均无控制台 error/warning，登录后可进入 `/dashboard`。
+- GitHub 状态：
+  - 本地提交：`78ed48e fix: 登录页接入站点品牌设置`。
+  - 远端 `main` 提交：`48f1d719c3f3cc82c7e3f3e9ba744343ef509f20`。
+  - GitHub Actions docker workflow `28987006961` 通过。
+- NAS 部署：
+  - 已部署到 NAS 实际项目 `/volume1/docker/dshunter`，仅重建并重启 `dshunter` 服务，未修改反代/frpc/frps 配置。
+  - 本次 NAS 备份：
+    - `/volume1/docker/_backups/dshunter/dshunter-20260709-091750.tar.gz`
+    - `/volume1/docker/_backups/dshunter/dshunter-data-20260709-091750.tar.gz`
+    - `/volume1/docker/_backups/dshunter/docker-compose-20260709-091750.yml`
+    - `/volume1/docker/_backups/dshunter/env-20260709-091750.bak`
+  - 部署后容器 `dshunter` 为 `healthy`，镜像 ID 为 `sha256:7a0c9ab9e486e002732843a4d5b1918afd17b2e278985857f7bae03c33f13688`。
+  - NAS 本机验证：`/` 返回 200，`/unlock` 返回 200，`/api/site-settings` 返回 200，未登录调用 `/api/admin/site-settings` 返回 401。
+- 线上验证：
+  - `https://dshunter.com` 返回 200，`/unlock` 返回 200，`/api/site-settings` 返回 200，未登录调用 `/api/admin/site-settings` 返回 401。
+  - 浏览器打开线上 `/unlock`，title 为“登录 · DS Hunter”，页面显示站点名称、短介绍、Hero 文案和 live 资产读数 `493 域名`、`42 Zones`、`3 注册商`。
+  - 390x844 移动登录页无横向溢出，显示站点名称和短介绍，登录后可进入 `/dashboard`。
+  - 本阶段未修改反代、frpc、frps 配置。
 
 ## 接手机器操作
 
